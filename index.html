@@ -315,6 +315,16 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <span style="color:var(--text3)">›</span>
       </div>
 
+      <!-- Install Banner -->
+      <div class="api-banner hidden" id="install-banner" onclick="installPWA()" style="background:rgba(46,204,136,0.07);border-color:rgba(46,204,136,0.2)">
+        <span style="font-size:20px">📲</span>
+        <div style="flex:1">
+          <div class="api-banner-title" style="color:var(--green)">Install Kharcha App</div>
+          <div class="api-banner-sub">Tap to install on your home screen</div>
+        </div>
+        <span style="color:var(--text3)">›</span>
+      </div>
+
       <!-- Insight Card -->
       <div class="insight-card">
         <div class="insight-header">
@@ -1208,22 +1218,34 @@ let deferredPrompt=null;
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();
   deferredPrompt=e;
+  // Show install banner on home screen
+  const banner=document.getElementById('install-banner');
+  if(banner)banner.classList.remove('hidden');
   const btn=document.getElementById('pwa-install-btn');
   if(btn)btn.classList.remove('hidden');
+  console.log('PWA installable!');
 });
 window.addEventListener('appinstalled',()=>{
   deferredPrompt=null;
+  const banner=document.getElementById('install-banner');
+  if(banner)banner.classList.add('hidden');
   const btn=document.getElementById('pwa-install-btn');
   if(btn)btn.classList.add('hidden');
-  toast('App installed successfully!');
+  toast('App installed! ✓');
 });
 async function installPWA(){
-  if(!deferredPrompt){toast('Use Chrome menu → Add to Home Screen');return}
-  deferredPrompt.prompt();
+  if(!deferredPrompt){
+    toast('Open in Chrome and wait a few seconds');
+    return;
+  }
+  await deferredPrompt.prompt();
   const{outcome}=await deferredPrompt.userChoice;
-  if(outcome==='accepted'){toast('Installing…')}
+  if(outcome==='accepted'){
+    toast('Installing…');
+    const banner=document.getElementById('install-banner');
+    if(banner)banner.classList.add('hidden');
+  }
   deferredPrompt=null;
-  document.getElementById('pwa-install-btn').classList.add('hidden');
 }
 
 // ═══════════════════════════════
