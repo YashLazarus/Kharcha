@@ -476,6 +476,27 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
           <div class="settings-sec-title">Data</div>
           <div class="settings-group">
             <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(0,229,160,0.1)">📤</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Export Backup</div>
+                <div class="s-row-sub">Download all your data as a JSON file</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-sm" onclick="exportData()">Export</button>
+              </div>
+            </div>
+            <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(124,77,255,0.1)">📥</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Import Backup</div>
+                <div class="s-row-sub">Restore from a previously exported file</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-sm" onclick="document.getElementById('import-file').click()">Import</button>
+                <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)"/>
+              </div>
+            </div>
+            <div class="s-row">
               <div class="s-row-icon" style="background:rgba(255,79,106,0.1)">🗑️</div>
               <div class="s-row-content">
                 <div class="s-row-label">Clear All Data</div>
@@ -634,13 +655,14 @@ const CAT_EMOJI={food:'🍛',groceries:'🛒',grocery:'🛒',transport:'🚗',tr
 function catEmoji(c){if(!c)return'📌';const l=c.toLowerCase();for(const[k,v]of Object.entries(CAT_EMOJI))if(l.includes(k))return v;return'🏷️'}
 function catColor(p){return p>=90?'var(--red)':p>=70?'var(--yellow)':'var(--green)'}
 function fmt(n){if(!n&&n!==0)return'0';n=parseFloat(n);if(isNaN(n))return'0';return n>=1000?n.toLocaleString('en-IN',{maximumFractionDigits:0}):n%1===0?n.toString():n.toFixed(2)}
-function sid(s){return(s||'').replace(/[^a-z0-9]/gi,'_')}
-function esc(s){return(s||'').replace(/'/g,"\\'")}
+function sid(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))&0xffffffff;return'c'+Math.abs(h).toString(36)}
+function esc(s){return encodeURIComponent(s||'')}
+function unesc(s){return decodeURIComponent(s||'')}
 
 let curYear=new Date().getFullYear(),curMonth=new Date().getMonth();
 
 function getMonthLabel(y,m){return new Date(y,m,1).toLocaleString('default',{month:'long',year:'numeric'})}
-function changeMonth(d){curMonth+=d;if(curMonth<0){curMonth=11;curYear--}if(curMonth>11){curMonth=0;curYear++}renderHome()}
+function changeMonth(d){curMonth+=d;if(curMonth<0){curMonth=11;curYear--}if(curMonth>11){curMonth=0;curYear++}const now=new Date();if(curYear>now.getFullYear()||(curYear===now.getFullYear()&&curMonth>now.getMonth())){curYear=now.getFullYear();curMonth=now.getMonth()}renderHome()}
 function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===curYear&&d.getMonth()===curMonth})}
 
 // ═══════════════════════════════
@@ -930,7 +952,38 @@ function addFixed(){
   renderSettings();renderHome();toast(`Added: ${name}`);
   if(S.geminiKey&&S.categories.length>0)aiSuggestAndApprove();
 }
-function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);save();renderSettings();renderHome()}
+function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);save();renderSettings();renderHome();if(S.geminiKey&&S.categories.length>0)aiSuggestAndApprove();}
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const d=new Date();
+  a.href=url;
+  a.download=`kharcha-backup-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Backup downloaded ✓');
+}
+
+function importData(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data.budget&&data.budget!==0)throw new Error('Invalid backup file');
+      if(!confirm(`Import backup? This will replace all current data.\n\n${data.expenses?.length||0} expenses, budget ₹${data.budget}`))return;
+      S={...defData(),...data};save();
+      toast('Data restored ✓');
+      setTimeout(()=>location.reload(),800);
+    }catch(err){
+      toast('Invalid backup file');
+    }
+  };
+  reader.readAsText(file);
+  input.value='';
+}
 
 function clearAll(){if(!confirm('Clear ALL data? Cannot be undone.'))return;S=defData();save();document.getElementById('app').style.display='none';document.getElementById('setup').style.display='flex';document.getElementById('setup-budget').value='';document.getElementById('setup-key').value='';document.getElementById('setup-key-status').classList.add('hidden')}
 
@@ -1037,7 +1090,7 @@ function renderCatsPage(){
   }).join('');
 }
 
-function openRename(cat){renamingCat=cat;document.getElementById('rename-inp').value=cat;openModal('modal-rename')}
+function openRename(cat){cat=unesc(cat);renamingCat=cat;document.getElementById('rename-inp').value=cat;openModal('modal-rename')}
 function confirmRename(){
   const n=document.getElementById('rename-inp').value.trim();
   if(!n||n===renamingCat){closeModal('modal-rename');return}
@@ -1049,7 +1102,7 @@ function confirmRename(){
 }
 
 function openMerge(cat){
-  mergingCat=cat;document.getElementById('merge-from-lbl').textContent=cat;
+  cat=unesc(cat);mergingCat=cat;document.getElementById('merge-from-lbl').textContent=cat;
   const sel=document.getElementById('merge-into-sel');
   sel.innerHTML=S.categories.filter(c=>c!==cat).map(c=>`<option value="${c}">${c}</option>`).join('');
   openModal('modal-merge');
@@ -1060,11 +1113,12 @@ function confirmMerge(){
   S.expenses.forEach(e=>{if(e.category===mergingCat)e.category=t});
   if(S.budgetSplit[mergingCat]&&S.budgetSplit[t])S.budgetSplit[t]=(S.budgetSplit[t]||0)+(S.budgetSplit[mergingCat]||0);
   delete S.budgetSplit[mergingCat];S.categories=S.categories.filter(c=>c!==mergingCat);
+  const _mt=Object.values(S.budgetSplit).reduce((s,v)=>s+v,0);if(_mt>0&&_mt!==100){const _ms=100/_mt;Object.keys(S.budgetSplit).forEach(k=>{S.budgetSplit[k]=Math.round(S.budgetSplit[k]*_ms)})}
   save();closeModal('modal-merge');renderCatsPage();renderHome();toast(`Merged into ${t}`)
 }
 
 function deleteCat(cat){
-  if(!confirm(`Delete "${cat}"? Transactions move to Uncategorized.`))return;
+  cat=unesc(cat);if(!confirm(`Delete "${cat}"? Transactions move to Uncategorized.`))return;
   S.expenses.forEach(e=>{if(e.category===cat)e.category='Uncategorized'});
   delete S.budgetSplit[cat];S.categories=S.categories.filter(c=>c!==cat);
   if(!S.categories.includes('Uncategorized')&&S.expenses.some(e=>e.category==='Uncategorized'))S.categories.push('Uncategorized');
