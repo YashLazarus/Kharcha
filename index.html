@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Kharcha">
 <link rel="manifest" href="/Kharcha/manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="/Kharcha/icon-192.png">
 <title>Kharcha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
@@ -779,7 +779,7 @@ Rules: amount must be positive. category = concise 1-2 words Title Case. isRefun
       if(isNew)addCat(category);
       commitTx({description,amount,category,emoji,isRefund});
     }
-  }catch(e){toast('Could not parse. Try: "coffee 50"');console.error(e)}
+  }catch(e){toast(e.message&&e.message.length<120?e.message:'Could not parse — check API key in Settings');console.error(e)}
   finally{inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
 }
 
