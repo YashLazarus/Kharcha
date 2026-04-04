@@ -475,6 +475,16 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div class="settings-sec">
           <div class="settings-sec-title">Data</div>
           <div class="settings-group">
+            <div class="s-row hidden" id="pwa-install-btn">
+              <div class="s-row-icon" style="background:rgba(124,106,247,0.1)">📲</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Install App</div>
+                <div class="s-row-sub">Add Kharcha to your home screen</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
+              </div>
+            </div>
             <div class="s-row">
               <div class="s-row-icon" style="background:rgba(0,229,160,0.1)">📤</div>
               <div class="s-row-content">
@@ -694,7 +704,7 @@ async function doSetup(){
     S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
     st.className='key-status valid';st.textContent='✓ Key validated!';
     setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
-  }catch{st.className='key-status invalid';st.textContent='✗ Invalid key. Try again.'}
+  }catch(e){st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key. Try again.')}
 }
 
 // ═══════════════════════════════
@@ -938,7 +948,7 @@ async function saveKey(){
     await validateKey(k);S.geminiKey=k;save();
     st.className='key-status valid';st.textContent='✓ Saved!';
     setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},1000)
-  }catch{st.className='key-status invalid';st.textContent='✗ Invalid key'}
+  }catch(e){st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key')}
 }
 
 function saveBudget(){const v=parseFloat(document.getElementById('s-budget').value);if(v>0){S.budget=v;save();renderHome();toast('Budget updated')}}
@@ -1192,6 +1202,31 @@ document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click
 // ═══════════════════════════════
 let toastT=null;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800)}
+
+// ═══════════════════════════════
+// PWA INSTALL
+// ═══════════════════════════════
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  const btn=document.getElementById('pwa-install-btn');
+  if(btn)btn.classList.remove('hidden');
+});
+window.addEventListener('appinstalled',()=>{
+  deferredPrompt=null;
+  const btn=document.getElementById('pwa-install-btn');
+  if(btn)btn.classList.add('hidden');
+  toast('App installed successfully!');
+});
+async function installPWA(){
+  if(!deferredPrompt){toast('Use Chrome menu → Add to Home Screen');return}
+  deferredPrompt.prompt();
+  const{outcome}=await deferredPrompt.userChoice;
+  if(outcome==='accepted'){toast('Installing…')}
+  deferredPrompt=null;
+  document.getElementById('pwa-install-btn').classList.add('hidden');
+}
 
 // ═══════════════════════════════
 // BOOT
