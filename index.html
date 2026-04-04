@@ -685,7 +685,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // DATA
 // ═══════════════════════════════
 const SK = 'kharcha_v1';
-function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false}}
+function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0}}
 // ═══════════════════════════════
 // FIREBASE
 // ═══════════════════════════════
@@ -708,7 +708,13 @@ function fbPath(){ return fbDb.ref(`users/${fbUid}/data`); }
 
 async function fbSave(data){
   if(!fbUid) return;
-  try{ await fbPath().set(data); } catch(e){ console.error('FB save error',e); }
+  try{
+    const payload={...data,lastUpdated:Date.now()};
+    await fbPath().set(payload);
+  } catch(e){
+    console.error('FB save error',e);
+    toast('⚠️ Sync failed — data saved locally');
+  }
 }
 
 async function fbLoad(){
@@ -726,10 +732,15 @@ function fbListen(){
     if(!snap.exists()) return;
     const remote = snap.val();
     if(remote && remote.setupDone){
-      S = {...defData(), ...remote};
-      localStorage.setItem(SK, JSON.stringify(S));
-      if(document.getElementById('app').style.display !== 'none'){
-        renderHome(); renderSettings();
+      // Only overwrite local if remote is newer
+      const remoteTime = remote.lastUpdated || 0;
+      const localTime = S.lastUpdated || 0;
+      if(remoteTime > localTime){
+        S = {...defData(), ...remote};
+        localStorage.setItem(SK, JSON.stringify(S));
+        if(document.getElementById('app').style.display !== 'none'){
+          renderHome(); renderSettings();
+        }
       }
     }
   });
@@ -774,6 +785,11 @@ async function onSignedIn(user){
 
 function signOut(){
   if(!confirm('Sign out of Kharcha?')) return;
+  // Cleanup Firebase listener before signing out
+  if(fbListener && fbUid){
+    fbPath().off('value', fbListener);
+    fbListener = null;
+  }
   fbAuth.signOut().then(()=>{
     fbUid = null; S = defData();
     localStorage.removeItem(SK);
@@ -808,15 +824,27 @@ let curYear=new Date().getFullYear(),curMonth=new Date().getMonth();
 
 function getMonthLabel(y,m){return new Date(y,m,1).toLocaleString('default',{month:'long',year:'numeric'})}
 function changeMonth(d){curMonth+=d;if(curMonth<0){curMonth=11;curYear--}if(curMonth>11){curMonth=0;curYear++}const now=new Date();if(curYear>now.getFullYear()||(curYear===now.getFullYear()&&curMonth>now.getMonth())){curYear=now.getFullYear();curMonth=now.getMonth()}renderHome()}
-function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===curYear&&d.getMonth()===curMonth})}
+function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date+'T12:00:00');return d.getFullYear()===curYear&&d.getMonth()===curMonth})}
 
 // ═══════════════════════════════
 // GEMINI
 // ═══════════════════════════════
 const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// FIX: daily quota counter
+function trackApiCall(){
+  const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+  const stored=JSON.parse(localStorage.getItem('kharcha_quota')||'{}');
+  if(stored.date!==today)stored.calls=0;
+  stored.date=today;stored.calls=(stored.calls||0)+1;
+  localStorage.setItem('kharcha_quota',JSON.stringify(stored));
+  if(stored.calls>=1400)toast(`⚠️ API usage: ${stored.calls}/1500 today`);
+  return stored.calls;
+}
+
 async function callGemini(prompt,key){
   const k=key||S.geminiKey;
   if(!k)throw new Error('No key');
+  trackApiCall();
   const r=await fetch(`${GURL}?key=${k}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:800}})});
   if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||`HTTP ${r.status}`)}
   const d=await r.json();
@@ -836,10 +864,16 @@ async function doSetup(){
     const st=document.getElementById('setup-key-status');
     st.className='key-status invalid';st.textContent='✗ Key format looks wrong. Should start with AIza';st.classList.remove('hidden');return;
   }
-  S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
   const st=document.getElementById('setup-key-status');
-  st.className='key-status valid';st.textContent='✓ Saved! Testing key on first use.';st.classList.remove('hidden');
-  setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
+  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating key…';st.classList.remove('hidden');
+  try{
+    await validateKey(key);
+    S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
+    st.className='key-status valid';st.textContent='✓ Key validated!';
+    setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
+  }catch(e){
+    st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key. Try again.');
+  }
 }
 
 // ═══════════════════════════════
@@ -876,43 +910,145 @@ function closeSubPage(id){
 // ADD EXPENSE
 // ═══════════════════════════════
 let pendingCat=null,pendingCatResolve=null,pendingTx=null;
+let isParsingExpense=false; // FIX: loading lock prevents duplicate calls
+const parseCache={}; // FIX: cache parsed results
+
+// FIX: Local fallback parser — handles simple inputs without hitting Gemini
+function localParse(text){
+  const t=text.trim().toLowerCase();
+  // Detect refund
+  const isRefund=/refund|return|reimburse|got back|received back/i.test(t);
+  // Extract amount — supports 1k, 1.5k, 1l, plain numbers
+  const amtMatch=t.match(/(\d+(?:\.\d+)?)\s*([kl])?/);
+  if(!amtMatch)return null;
+  let amount=parseFloat(amtMatch[1]);
+  if(amtMatch[2]==='k')amount*=1000;
+  if(amtMatch[2]==='l')amount*=100000;
+  if(!amount||amount<=0)return null;
+  // Remove amount from text to get description
+  const desc=text.replace(/\d+(?:\.\d+)?\s*[kKlL]?/,'').replace(/refund|return|reimburse/gi,'').replace(/\s+/g,' ').trim()||'Expense';
+  // Match known categories by keyword
+  const catMap={
+    food:['chai','tea','coffee','lunch','dinner','breakfast','food','meal','snack','eat','restaurant','cafe','hotel','biryani','pizza','burger','zomato','swiggy','blinkit'],
+    groceries:['grocery','groceries','vegetables','fruits','milk','supermarket','dmart','bigbasket','zepto'],
+    transport:['uber','ola','auto','rickshaw','taxi','bus','metro','train','fuel','petrol','diesel','cab','rapido'],
+    shopping:['amazon','flipkart','myntra','clothes','shirt','shoes','shopping','buy','purchase'],
+    health:['medicine','medical','doctor','hospital','pharmacy','chemist','health','gym','fitness'],
+    entertainment:['movie','netflix','hotstar','prime','spotify','game','concert','ticket','fun'],
+    bills:['electricity','bill','recharge','mobile','internet','broadband','rent','emi','loan'],
+    parents:['parents','mom','dad','family','home','sent','transfer'],
+    subscriptions:['subscription','monthly','annual','yearly'],
+  };
+  let category='Others';
+  for(const[cat,keywords]of Object.entries(catMap)){
+    if(keywords.some(k=>t.includes(k))){
+      category=cat.charAt(0).toUpperCase()+cat.slice(1);
+      break;
+    }
+  }
+  // Also check existing categories
+  for(const c of S.categories){
+    if(t.includes(c.toLowerCase())){category=c;break;}
+  }
+  return{description:desc,amount,category,emoji:catEmoji(category),isRefund};
+}
 
 async function addExpense(){
   const inp=document.getElementById('quick-input');
   const text=inp.value.trim();
   if(!text)return;
-  if(!S.geminiKey){toast('Set Gemini API key in Settings');return}
+  if(isParsingExpense)return; // FIX: prevent duplicate calls
+  if(!S.geminiKey){
+    // FIX: try local parse if no key
+    const local=localParse(text);
+    if(local){inp.value='';handleParsed(local);return;}
+    toast('Set Gemini API key in Settings');return;
+  }
+  // FIX: check cache first
+  const cacheKey=text.toLowerCase().trim();
+  if(parseCache[cacheKey]){
+    inp.value='';
+    handleParsed({...parseCache[cacheKey]});
+    return;
+  }
+  // FIX: try local parse for simple inputs first
+  const local=localParse(text);
+  if(local&&local.amount&&local.category!=='Others'){
+    inp.value='';
+    handleParsed(local);
+    return;
+  }
+  // Fall through to Gemini for complex inputs
+  isParsingExpense=true;
   inp.value='';inp.disabled=true;
   document.getElementById('parsing-ind').classList.add('active');
   try{
-    const cats=S.categories.length>0?`Known categories: ${S.categories.join(', ')}.`:'No categories yet — create new ones.';
-    const prompt=`Parse this expense and return ONLY valid JSON, no markdown.
-Input: "${text}"
-${cats}
-Return: {"description":"...","amount":number,"category":"...","emoji":"...","isRefund":false}
-Rules: amount must be positive. category = concise 1-2 words Title Case. isRefund=true if mentions refund/return/reimbursement.`;
-    const raw=await callGemini(prompt);
-    let parsed;try{parsed=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}catch(e){throw new Error('Gemini returned invalid JSON')}
-    const{description,amount,category,emoji,isRefund}=parsed;
-    if(!amount||isNaN(amount))throw new Error('No amount');
-    const isNew=category&&!S.categories.includes(category);
-    if(isNew&&S.categories.length>0){
-      pendingTx={description,amount,category,emoji,isRefund};
-      await showNewCatModal(category);
-    }else{
-      if(isNew)addCat(category);
-      commitTx({description,amount,category,emoji,isRefund});
+    // FIX: shorter prompt — only pass top 8 categories to reduce tokens
+    const topCats=S.categories.slice(0,8).join(', ')||'none';
+    const prompt=`Parse expense, return ONLY JSON, no markdown.
+Input:"${text}" Categories:${topCats}
+{"description":"string","amount":number,"category":"string","emoji":"string","isRefund":boolean}`;
+    // FIX: retry with exponential backoff
+    let raw='',attempts=0;
+    while(attempts<3){
+      try{raw=await callGemini(prompt);break;}
+      catch(e){
+        attempts++;
+        if(attempts>=3)throw e;
+        await new Promise(r=>setTimeout(r,1000*Math.pow(2,attempts)));
+      }
     }
-  }catch(e){const msg=(e.message||'Unknown error').slice(0,200);toast(msg);console.error('Full error:',e)}
-  finally{inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
+    let parsed;
+    try{parsed=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}
+    catch(e){throw new Error('Could not parse response')}
+    const{description,amount,category,emoji,isRefund}=parsed;
+    if(!amount||isNaN(amount))throw new Error('No amount found');
+    // FIX: cache successful parse
+    parseCache[cacheKey]={description,amount,category,emoji,isRefund};
+    handleParsed({description,amount,category,emoji,isRefund});
+  }catch(e){
+    // FIX: fallback to local parser on Gemini failure
+    const fallback=localParse(text);
+    if(fallback){
+      toast('AI unavailable — used smart guess');
+      inp.value='';
+      handleParsed(fallback);
+    }else{
+      const msg=(e.message||'Unknown error').slice(0,200);
+      toast(msg);
+      inp.value=text; // restore input
+      console.error('Parse error:',e);
+    }
+  }
+  finally{isParsingExpense=false;inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
+}
+
+function handleParsed({description,amount,category,emoji,isRefund}){
+  category=normCat(category||'Uncategorized');
+  const isNew=category&&!S.categories.includes(category);
+  if(isNew&&S.categories.length>0){
+    pendingTx={description,amount,category,emoji,isRefund};
+    showNewCatModal(category);
+  }else{
+    if(isNew)addCat(category);
+    commitTx({description,amount,category,emoji,isRefund});
+  }
 }
 
 function commitTx({description,amount,category,emoji,isRefund}){
-  S.expenses.unshift({id:Date.now().toString(),date:(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})(),description:description||'Expense',amount:parseFloat(amount),category:category||'Uncategorized',emoji:emoji||catEmoji(category),isRefund:!!isRefund});
+  S.expenses.unshift({id:Date.now().toString(36)+Math.random().toString(36).slice(2),date:(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})(),description:description||'Expense',amount:parseFloat(amount),category:category||'Uncategorized',emoji:emoji||catEmoji(category),isRefund:!!isRefund});
   save();renderHome();toast(`Added: ${description} ₹${fmt(amount)}`);
 }
 
-function addCat(c){if(c&&!S.categories.includes(c)){S.categories.push(c);save()}}
+function clearParseCache(){Object.keys(parseCache).forEach(k=>delete parseCache[k]);}
+function normCat(c){
+  if(!c)return 'Uncategorized';
+  return c.trim().replace(/\b\w/g,l=>l.toUpperCase());
+}
+function addCat(c){
+  const n=normCat(c);
+  if(n&&!S.categories.includes(n)){S.categories.push(n);save()}
+}
 
 function showNewCatModal(name){
   return new Promise(r=>{
@@ -938,7 +1074,7 @@ function confirmNewCat(action){
   const merge=document.getElementById('new-cat-merge').value;
   const renamed=document.getElementById('new-cat-rename').value.trim();
   if(merge){
-    if(pendingTx){pendingTx.category=merge;commitTx(pendingTx);pendingTx=null}
+    if(pendingTx){pendingTx.category=normCat(merge);commitTx(pendingTx);pendingTx=null}
   }else if(renamed&&renamed!==pendingCat){
     addCat(renamed);
     if(pendingTx){pendingTx.category=renamed;commitTx(pendingTx);pendingTx=null}
@@ -958,7 +1094,8 @@ function renderHome(){
   const txs=getMonthTxs();
   const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
   const flexBudget=Math.max(0,S.budget-fixedTotal);
-  const spent=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
+  const spentRaw=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
+  const spent=Math.max(0,spentRaw);
   const pct=flexBudget>0?Math.min(spent/flexBudget*100,100):0;
 
   document.getElementById('spent-display').textContent='₹'+fmt(spent);
@@ -1076,11 +1213,16 @@ function cancelKeyEdit(){document.getElementById('key-edit-area').classList.add(
 async function saveKey(){
   const k=document.getElementById('s-key-input').value.trim();
   if(!k){toast('Enter a key');return}
-  if(!k.startsWith('AIza')||k.length<30){toast('Key format looks wrong');return}
-  S.geminiKey=k;save();
   const st=document.getElementById('s-key-status');
-  st.className='key-status valid';st.textContent='✓ Saved!';st.classList.remove('hidden');
-  setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},800)
+  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating…';st.classList.remove('hidden');
+  try{
+    await validateKey(k);
+    S.geminiKey=k;save();
+    st.className='key-status valid';st.textContent='✓ Saved & validated!';
+    setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},800)
+  }catch(e){
+    st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key');
+  }
 }
 
 function saveBudget(){const v=parseFloat(document.getElementById('s-budget').value);if(v>0){S.budget=v;save();renderHome();toast('Budget updated')}}
@@ -1089,12 +1231,11 @@ function addFixed(){
   const name=document.getElementById('fx-name').value.trim();
   const amt=parseFloat(document.getElementById('fx-amt').value);
   if(!name||!amt||amt<=0){toast('Enter name and amount');return}
-  S.fixedExpenses.push({id:Date.now().toString(),name,amount:amt});save();
+  S.fixedExpenses.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name,amount:amt});save();
   document.getElementById('fx-name').value='';document.getElementById('fx-amt').value='';
   renderSettings();renderHome();toast(`Added: ${name}`);
-  if(S.geminiKey&&S.categories.length>0)aiSuggestAndApprove();
 }
-function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);save();renderSettings();renderHome();if(S.geminiKey&&S.categories.length>0)aiSuggestAndApprove();}
+function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);save();renderSettings();renderHome();}
 
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
@@ -1116,9 +1257,10 @@ function importData(input){
       const data=JSON.parse(e.target.result);
       if(!data.budget&&data.budget!==0)throw new Error('Invalid backup file');
       if(!confirm(`Import backup? This will replace all current data.\n\n${data.expenses?.length||0} expenses, budget ₹${data.budget}`))return;
-      S={...defData(),...data};save();
-      toast('Data restored ✓');
-      setTimeout(()=>location.reload(),800);
+      S={...defData(),...data};
+      localStorage.setItem(SK,JSON.stringify(S));
+      fbSave(S).then(()=>{toast('Data restored & synced ✓');setTimeout(()=>location.reload(),1000);});
+      toast('Restoring…');
     }catch(err){
       toast('Invalid backup file');
     }
@@ -1127,7 +1269,18 @@ function importData(input){
   input.value='';
 }
 
-function clearAll(){if(!confirm('Clear ALL data? Cannot be undone.'))return;S=defData();save();document.getElementById('app').style.display='none';document.getElementById('setup').style.display='flex';document.getElementById('setup-budget').value='';document.getElementById('setup-key').value='';document.getElementById('setup-key-status').classList.add('hidden')}
+function clearAll(){
+  if(!confirm('Clear ALL data? Cannot be undone.'))return;
+  if(fbListener&&fbUid){fbPath().off('value',fbListener);fbListener=null;}
+  if(fbUid){fbPath().remove().catch(()=>{});}
+  S=defData();localStorage.removeItem(SK);
+  fbAuth.signOut().then(()=>{
+    fbUid=null;
+    document.getElementById('app').style.display='none';
+    document.getElementById('setup').style.display='none';
+    document.getElementById('login').style.display='flex';
+  });
+}
 
 // ═══════════════════════════════
 // BUDGET SPLIT
@@ -1164,6 +1317,9 @@ function updateSplitTotal(){
 
 function saveSplit(){
   S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i)S.budgetSplit[cat]=parseFloat(i.value)||0});
+  // Normalize to exactly 100%
+  const tot=Object.values(S.budgetSplit).reduce((s,v)=>s+v,0);
+  if(tot>0&&Math.abs(tot-100)>0.5){const sc=100/tot;Object.keys(S.budgetSplit).forEach(k=>{S.budgetSplit[k]=Math.round(S.budgetSplit[k]*sc)});}
   save();renderHome();toast('Budget split saved!');
 }
 
@@ -1240,7 +1396,7 @@ function confirmRename(){
   const i=S.categories.indexOf(renamingCat);S.categories[i]=n;
   S.expenses.forEach(e=>{if(e.category===renamingCat)e.category=n});
   if(S.budgetSplit[renamingCat]!==undefined){S.budgetSplit[n]=S.budgetSplit[renamingCat];delete S.budgetSplit[renamingCat]}
-  save();closeModal('modal-rename');renderCatsPage();renderHome();toast(`Renamed to ${n}`)
+  clearParseCache();save();closeModal('modal-rename');renderCatsPage();renderHome();toast(`Renamed to ${n}`)
 }
 
 function openMerge(cat){
@@ -1256,7 +1412,7 @@ function confirmMerge(){
   if(S.budgetSplit[mergingCat]&&S.budgetSplit[t])S.budgetSplit[t]=(S.budgetSplit[t]||0)+(S.budgetSplit[mergingCat]||0);
   delete S.budgetSplit[mergingCat];S.categories=S.categories.filter(c=>c!==mergingCat);
   const _mt=Object.values(S.budgetSplit).reduce((s,v)=>s+v,0);if(_mt>0&&_mt!==100){const _ms=100/_mt;Object.keys(S.budgetSplit).forEach(k=>{S.budgetSplit[k]=Math.round(S.budgetSplit[k]*_ms)})}
-  save();closeModal('modal-merge');renderCatsPage();renderHome();toast(`Merged into ${t}`)
+  clearParseCache();save();closeModal('modal-merge');renderCatsPage();renderHome();toast(`Merged into ${t}`)
 }
 
 function deleteCat(cat){
@@ -1264,7 +1420,7 @@ function deleteCat(cat){
   S.expenses.forEach(e=>{if(e.category===cat)e.category='Uncategorized'});
   delete S.budgetSplit[cat];S.categories=S.categories.filter(c=>c!==cat);
   if(!S.categories.includes('Uncategorized')&&S.expenses.some(e=>e.category==='Uncategorized'))S.categories.push('Uncategorized');
-  save();renderCatsPage();renderHome();toast(`Deleted ${cat}`)
+  clearParseCache();save();renderCatsPage();renderHome();toast(`Deleted ${cat}`)
 }
 
 // ═══════════════════════════════
@@ -1298,8 +1454,11 @@ function deleteTx(){if(!confirm('Delete this transaction?'))return;S.expenses=S.
 // ═══════════════════════════════
 // INSIGHTS
 // ═══════════════════════════════
+let isRefreshingInsights=false;
 async function refreshInsights(fromSettings=false){
   if(!S.geminiKey){toast('Set API key first');return}
+  if(isRefreshingInsights){toast('Already refreshing…');return}
+  isRefreshingInsights=true;
   const btn=document.getElementById('insight-refresh-btn');
   const textEl=document.getElementById('insight-text');
   const sbtn=document.getElementById('s-refresh-btn');
@@ -1319,7 +1478,7 @@ Be specific, warm, and actionable. Use ₹ symbols. Plain text only, no markdown
     textEl.textContent=S.insights;
     if(fromSettings){renderSettings();toast('Insights refreshed!')}
   }catch{textEl.textContent='Could not load insights. Check your API key.'}
-  finally{btn?.classList.remove('spinning');if(sbtn){sbtn.disabled=false;sbtn.innerHTML='↻ Refresh'}}
+  finally{isRefreshingInsights=false;btn?.classList.remove('spinning');if(sbtn){sbtn.disabled=false;sbtn.innerHTML='↻ Refresh'}}
 }
 
 // ═══════════════════════════════
