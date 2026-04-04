@@ -1,5 +1,11 @@
-const CACHE = 'kharcha-v1';
-const ASSETS = ['/', '/index.html', '/manifest.json'];
+const CACHE = 'kharcha-v2';
+const ASSETS = [
+  '/Kharcha/',
+  '/Kharcha/index.html',
+  '/Kharcha/manifest.json',
+  '/Kharcha/icon-192.png',
+  '/Kharcha/icon-512.png'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(() => {}));
@@ -15,12 +21,10 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Network-first for Gemini API
   if (url.hostname.includes('googleapis.com')) {
     e.respondWith(fetch(e.request).catch(() => new Response('offline', { status: 503 })));
     return;
   }
-  // Cache-first for everything else
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
       if (res.ok && e.request.method === 'GET') {
@@ -28,6 +32,6 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE).then(c => c.put(e.request, clone));
       }
       return res;
-    })).catch(() => caches.match('/index.html'))
+    })).catch(() => caches.match('/Kharcha/index.html'))
   );
 });
