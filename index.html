@@ -678,7 +678,7 @@ function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date);ret
 // ═══════════════════════════════
 // GEMINI
 // ═══════════════════════════════
-const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 async function callGemini(prompt,key){
   const k=key||S.geminiKey;
   if(!k)throw new Error('No key');
@@ -697,14 +697,14 @@ async function doSetup(){
   const key=document.getElementById('setup-key').value.trim();
   if(!budget||budget<=0){toast('Enter a valid budget');return}
   if(!key){toast('Enter your Gemini API key');return}
+  if(!key.startsWith('AIza')||key.length<30){
+    const st=document.getElementById('setup-key-status');
+    st.className='key-status invalid';st.textContent='✗ Key format looks wrong. Should start with AIza';st.classList.remove('hidden');return;
+  }
+  S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
   const st=document.getElementById('setup-key-status');
-  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating…';st.classList.remove('hidden');
-  try{
-    await validateKey(key);
-    S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
-    st.className='key-status valid';st.textContent='✓ Key validated!';
-    setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
-  }catch(e){st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key. Try again.')}
+  st.className='key-status valid';st.textContent='✓ Saved! Testing key on first use.';st.classList.remove('hidden');
+  setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
 }
 
 // ═══════════════════════════════
@@ -942,13 +942,11 @@ function cancelKeyEdit(){document.getElementById('key-edit-area').classList.add(
 async function saveKey(){
   const k=document.getElementById('s-key-input').value.trim();
   if(!k){toast('Enter a key');return}
+  if(!k.startsWith('AIza')||k.length<30){toast('Key format looks wrong');return}
+  S.geminiKey=k;save();
   const st=document.getElementById('s-key-status');
-  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating…';st.classList.remove('hidden');
-  try{
-    await validateKey(k);S.geminiKey=k;save();
-    st.className='key-status valid';st.textContent='✓ Saved!';
-    setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},1000)
-  }catch(e){st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key')}
+  st.className='key-status valid';st.textContent='✓ Saved!';st.classList.remove('hidden');
+  setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},800)
 }
 
 function saveBudget(){const v=parseFloat(document.getElementById('s-budget').value);if(v>0){S.budget=v;save();renderHome();toast('Budget updated')}}
