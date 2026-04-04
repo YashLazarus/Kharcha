@@ -813,7 +813,7 @@ function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date);ret
 // ═══════════════════════════════
 // GEMINI
 // ═══════════════════════════════
-const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 async function callGemini(prompt,key){
   const k=key||S.geminiKey;
   if(!k)throw new Error('No key');
@@ -903,7 +903,7 @@ Rules: amount must be positive. category = concise 1-2 words Title Case. isRefun
       if(isNew)addCat(category);
       commitTx({description,amount,category,emoji,isRefund});
     }
-  }catch(e){const msg=(e.message||'Unknown error').slice(0,150);toast(msg);console.error(e)}
+  }catch(e){const msg=(e.message||'Unknown error').slice(0,200);toast(msg);console.error('Full error:',e)}
   finally{inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
 }
 
