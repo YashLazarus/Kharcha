@@ -779,7 +779,7 @@ Rules: amount must be positive. category = concise 1-2 words Title Case. isRefun
       if(isNew)addCat(category);
       commitTx({description,amount,category,emoji,isRefund});
     }
-  }catch(e){toast(e.message&&e.message.length<120?e.message:'Could not parse — check API key in Settings');console.error(e)}
+  }catch(e){const msg=(e.message||'Unknown error').slice(0,150);toast(msg);console.error(e)}
   finally{inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
 }
 
