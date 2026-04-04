@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Kharcha">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/Kharcha/manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Kharcha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1233,7 +1233,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(S.setupDone){document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()}
   else{document.getElementById('setup').style.display='flex';document.getElementById('app').style.display='none'}
 });
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/Kharcha/sw.js').catch(()=>{});
 </script>
 </body>
 </html>
