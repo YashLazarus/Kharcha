@@ -11,6 +11,9 @@
 <link rel="apple-touch-icon" href="/Kharcha/icon-192.png">
 <title>Kharcha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0a0f;--bg2:#111118;--bg3:#1a1a24;--bg4:#22222e;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);--text:#f0f0f8;--text2:#888899;--text3:#55556a;--accent:#7c6af7;--accent2:#a594ff;--green:#2ecc88;--yellow:#f5a623;--red:#ff4f6a;--green-dim:rgba(46,204,136,0.12);--yellow-dim:rgba(245,166,35,0.12);--red-dim:rgba(255,79,106,0.12);--radius:14px;--radius-sm:8px;--font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;--safe-bottom:env(safe-area-inset-bottom,0px)}
@@ -664,8 +667,63 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // ═══════════════════════════════
 const SK = 'kharcha_v1';
 function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false}}
+// ═══════════════════════════════
+// FIREBASE
+// ═══════════════════════════════
+const FB_CONFIG = {
+  apiKey: "AIzaSyBA8EI08cp2tR3dObPy-vvYTeR41jGCJO0",
+  authDomain: "kharcha-e06bf.firebaseapp.com",
+  projectId: "kharcha-e06bf",
+  databaseURL: "https://kharcha-e06bf-default-rtdb.asia-southeast1.firebasedatabase.app",
+  storageBucket: "kharcha-e06bf.firebasestorage.app",
+  messagingSenderId: "441622923567",
+  appId: "1:441622923767:web:f18f2e715e38d95802f9da"
+};
+firebase.initializeApp(FB_CONFIG);
+const fbAuth = firebase.auth();
+const fbDb = firebase.database();
+let fbUid = null;
+let fbRef = null;
+
+function fbPath(){ return fbRef = fbDb.ref(`users/${fbUid}/data`); }
+
+async function fbSave(data){
+  if(!fbUid) return;
+  try{ await fbPath().set(data); } catch(e){ console.error('FB save error',e); }
+}
+
+async function fbLoad(){
+  if(!fbUid) return null;
+  try{
+    const snap = await fbPath().get();
+    return snap.exists() ? snap.val() : null;
+  } catch(e){ console.error('FB load error',e); return null; }
+}
+
+function fbListen(){
+  if(!fbUid) return;
+  fbPath().on('value', snap => {
+    if(!snap.exists()) return;
+    const remote = snap.val();
+    // Only update if remote is newer or has more expenses
+    if(remote && remote.expenses && (!S.expenses || remote.expenses.length >= S.expenses.length)){
+      S = {...defData(), ...remote};
+      localStorage.setItem(SK, JSON.stringify(S));
+      if(document.getElementById('app').style.display !== 'none'){
+        renderHome(); renderSettings();
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════
+// LOCAL STORAGE
+// ═══════════════════════════════
 function load(){try{const r=localStorage.getItem(SK);return r?{...defData(),...JSON.parse(r)}:defData()}catch{return defData()}}
-function save(){localStorage.setItem(SK,JSON.stringify(S))}
+function save(){
+  localStorage.setItem(SK,JSON.stringify(S));
+  fbSave(S); // sync to Firebase
+}
 let S=load();
 
 // ═══════════════════════════════
@@ -1252,8 +1310,36 @@ async function installPWA(){
 // BOOT
 // ═══════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
-  if(S.setupDone){document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()}
-  else{document.getElementById('setup').style.display='flex';document.getElementById('app').style.display='none'}
+  // Sign in anonymously to Firebase for sync
+  fbAuth.signInAnonymously().then(async cred => {
+    fbUid = cred.user.uid;
+    // Try to load from Firebase first
+    const remote = await fbLoad();
+    if(remote && remote.setupDone){
+      S = {...defData(), ...remote};
+      localStorage.setItem(SK, JSON.stringify(S));
+    }
+    fbListen(); // live sync
+    if(S.setupDone){
+      document.getElementById('setup').style.display='none';
+      document.getElementById('app').style.display='flex';
+      initApp();
+    } else {
+      document.getElementById('setup').style.display='flex';
+      document.getElementById('app').style.display='none';
+    }
+  }).catch(err => {
+    console.error('Firebase auth error', err);
+    // Fall back to localStorage only
+    if(S.setupDone){
+      document.getElementById('setup').style.display='none';
+      document.getElementById('app').style.display='flex';
+      initApp();
+    } else {
+      document.getElementById('setup').style.display='flex';
+      document.getElementById('app').style.display='none';
+    }
+  });
 });
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/Kharcha/sw.js').catch(()=>{});
 </script>
