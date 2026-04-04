@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kharcha">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Kharcha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0f;--bg2:#111118;--bg3:#1a1a24;--bg4:#22222e;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);--text:#f0f0f8;--text2:#888899;--text3:#55556a;--accent:#7c6af7;--accent2:#a594ff;--green:#2ecc88;--yellow:#f5a623;--red:#ff4f6a;--green-dim:rgba(46,204,136,0.12);--yellow-dim:rgba(245,166,35,0.12);--red-dim:rgba(255,79,106,0.12);--radius:14px;--radius-sm:8px;--font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;--safe-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden;overscroll-behavior:none}
+
+/* SETUP */
+#setup{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;background:radial-gradient(ellipse at 50% 0%,rgba(124,106,247,0.15) 0%,transparent 70%)}
+.setup-logo{font-size:48px;font-weight:800;letter-spacing:-2px;margin-bottom:6px}
+.setup-logo span{color:var(--accent2)}
+.setup-sub{font-family:var(--mono);font-size:12px;color:var(--text3);margin-bottom:48px}
+.setup-card{width:100%;max-width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:28px}
+.setup-label{font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.setup-hint{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6}
+.setup-divider{height:1px;background:var(--border);margin:20px 0}
+
+/* INPUTS */
+input[type="text"],input[type="number"],input[type="password"],input[type="date"],textarea,select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:15px;padding:12px 14px;outline:none;transition:border-color 0.2s;-webkit-appearance:none;appearance:none}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+input[type="number"]{font-family:var(--mono)}
+.input-pfx-wrap{position:relative}
+.input-pfx{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text2);font-family:var(--mono);font-size:15px;pointer-events:none}
+.input-pfx-wrap input{padding-left:26px}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:12px 20px;border-radius:var(--radius-sm);font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;letter-spacing:0.02em}
+.btn-primary{background:var(--accent);color:white;width:100%}
+.btn-primary:active{background:#6b59e0;transform:scale(0.98)}
+.btn-ghost{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:active{background:var(--bg4)}
+.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,79,106,0.2)}
+.btn-ai{background:linear-gradient(135deg,#2d1f6e,#1a1a30);color:var(--accent2);border:1px solid rgba(124,106,247,0.3);font-size:13px}
+.btn-ai:active{opacity:0.8}
+.btn-sm{padding:8px 14px;font-size:13px}
+.btn-xs{padding:5px 10px;font-size:12px}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* APP SHELL */
+#app{display:none;flex-direction:column;min-height:100dvh}
+.app-content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(68px + var(--safe-bottom));-webkit-overflow-scrolling:touch}
+
+/* TAB BAR */
+.tab-bar{position:fixed;bottom:0;left:0;right:0;height:calc(58px + var(--safe-bottom));padding-bottom:var(--safe-bottom);background:rgba(10,10,15,0.93);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;z-index:100}
+.tab-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:var(--text3);transition:color 0.2s}
+.tab-item.active{color:var(--accent2)}
+.tab-item svg{width:22px;height:22px}
+.tab-label{font-size:10px;font-weight:600;letter-spacing:0.05em}
+
+/* PAGES */
+.page{display:none}
+.page.active{display:block}
+
+/* HOME HEADER */
+.home-header{padding:20px 20px 0}
+.month-selector{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.month-btn{width:32px;height:32px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:18px}
+.month-btn:active{background:var(--bg4)}
+.month-label{font-size:13px;font-weight:600;color:var(--text2);letter-spacing:0.05em;text-transform:uppercase}
+
+/* BUDGET CARD */
+.budget-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:12px}
+.budget-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+.spent-amount{font-family:var(--mono);font-size:30px;font-weight:400;letter-spacing:-1px;line-height:1}
+.spent-label{font-size:11px;color:var(--text3);margin-top:4px;font-weight:500;letter-spacing:0.05em;text-transform:uppercase}
+.health-badge{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.health-score{font-family:var(--mono);font-size:22px;font-weight:500;line-height:1}
+.health-label{font-size:10px;color:var(--text3);letter-spacing:0.08em;text-transform:uppercase}
+.master-bar{height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:8px}
+.master-bar-fill{height:100%;border-radius:3px;transition:width 0.6s cubic-bezier(0.4,0,0.2,1)}
+.budget-footer{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--text3)}
+
+/* API BANNER */
+.api-banner{margin:0 20px 12px;background:rgba(124,106,247,0.07);border:1px solid rgba(124,106,247,0.2);border-radius:var(--radius-sm);padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.api-banner-title{font-size:13px;font-weight:600;color:var(--accent2)}
+.api-banner-sub{font-size:11px;color:var(--text3);margin-top:1px}
+
+/* INSIGHT CARD */
+.insight-card{margin:0 20px 12px;background:linear-gradient(135deg,rgba(124,106,247,0.07) 0%,rgba(26,26,36,0.9) 100%);border:1px solid rgba(124,106,247,0.15);border-radius:var(--radius);padding:14px;position:relative;overflow:hidden}
+.insight-card::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:radial-gradient(circle,rgba(124,106,247,0.15),transparent 70%);pointer-events:none}
+.insight-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.insight-title{font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--accent);text-transform:uppercase}
+.insight-text{font-size:13px;color:var(--text2);line-height:1.6}
+.insight-refresh-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;font-size:15px;line-height:1;transition:color 0.2s,transform 0.3s}
+.insight-refresh-btn:active{color:var(--accent)}
+.insight-refresh-btn.spinning{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* QUICK ADD */
+.quick-add{margin:0 20px 14px;display:flex;gap:8px}
+.quick-add input{flex:1;font-size:14px}
+.qa-btn{width:44px;height:44px;flex-shrink:0;border-radius:var(--radius-sm);background:var(--accent);border:none;color:white;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.15s}
+.qa-btn:active{background:#6b59e0}
+
+/* PARSING INDICATOR */
+.parsing-ind{margin:0 20px 10px;background:rgba(124,106,247,0.08);border:1px solid rgba(124,106,247,0.2);border-radius:var(--radius-sm);padding:10px 14px;display:none;align-items:center;gap:10px;font-size:13px;color:var(--accent2)}
+.parsing-ind.active{display:flex}
+
+/* SECTION HEADER */
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 20px;margin-bottom:10px}
+.sec-title{font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase}
+
+/* CATEGORY BARS */
+.cat-bars{padding:0 20px;margin-bottom:18px;display:flex;flex-direction:column;gap:10px}
+.cat-bar-item{display:flex;flex-direction:column;gap:5px}
+.cat-bar-hdr{display:flex;align-items:center;justify-content:space-between}
+.cat-bar-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.cat-bar-amts{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.cat-bar-track{height:5px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.cat-bar-fill{height:100%;border-radius:3px;transition:width 0.5s cubic-bezier(0.4,0,0.2,1)}
+
+/* DIST CHIPS */
+.dist-chips{padding:0 20px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:8px}
+.dist-chip{display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:20px;font-size:12px}
+.dist-chip-pct{font-family:var(--mono);font-weight:500}
+.dist-chip-name{color:var(--text3)}
+
+/* FIXED SECTION HOME */
+.fixed-sec-home{margin:0 20px 18px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.fixed-sec-hdr{padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text3);display:flex;justify-content:space-between}
+.fixed-item{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+.fixed-item:last-child{border-bottom:none}
+.fixed-item-amt{font-family:var(--mono);font-size:13px;color:var(--yellow)}
+
+/* TRANSACTION LIST */
+.tx-list{padding:0 20px;margin-bottom:20px;display:flex;flex-direction:column;gap:7px}
+.tx-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;display:flex;align-items:center;gap:11px;cursor:pointer;transition:background 0.15s}
+.tx-item:active{background:var(--bg3)}
+.tx-emoji-box{width:34px;height:34px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.tx-info{flex:1;min-width:0}
+.tx-desc{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-meta{font-size:11px;color:var(--text3);margin-top:2px;display:flex;align-items:center;gap:6px}
+.tx-cat-tag{background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:500;color:var(--text2)}
+.tx-refund-badge{font-size:9px;background:var(--green-dim);color:var(--green);padding:2px 5px;border-radius:3px;font-weight:600}
+.tx-amount{font-family:var(--mono);font-size:14px;font-weight:500;flex-shrink:0}
+.tx-amount.pos{color:var(--green)}
+.tx-empty{text-align:center;padding:32px 20px;color:var(--text3);font-size:14px;line-height:1.8}
+
+/* SETTINGS */
+.page-hdr{padding:20px;padding-top:max(20px,env(safe-area-inset-top,20px))}
+.page-hdr-title{font-size:26px;font-weight:800;letter-spacing:-0.5px}
+.page-hdr-sub{font-size:12px;color:var(--text3);margin-top:4px}
+.settings-content{padding:0 20px 20px}
+.settings-sec{margin-bottom:22px}
+.settings-sec-title{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;padding-left:2px}
+.settings-group{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.s-row{display:flex;align-items:center;padding:13px 15px;border-bottom:1px solid var(--border);gap:11px}
+.s-row:last-child{border-bottom:none}
+.s-row.tappable{cursor:pointer}
+.s-row.tappable:active{background:var(--bg3)}
+.s-row-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.s-row-content{flex:1;min-width:0}
+.s-row-label{font-size:14px;font-weight:500}
+.s-row-sub{font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.s-row-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.s-arrow{color:var(--text3);font-size:18px}
+
+/* SUBPAGE */
+.sub-page{display:none;position:fixed;inset:0;background:var(--bg);z-index:200;flex-direction:column}
+.sub-page.active{display:flex;animation:slideIn 0.25s cubic-bezier(0.4,0,0.2,1)}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.sub-page-hdr{display:flex;align-items:center;gap:12px;padding:15px 20px;padding-top:max(15px,env(safe-area-inset-top,15px));border-bottom:1px solid var(--border);flex-shrink:0}
+.sub-page-back{width:36px;height:36px;border-radius:50%;background:var(--bg3);border:none;color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;flex-shrink:0}
+.sub-page-title{font-size:17px;font-weight:700}
+.sub-page-content{flex:1;overflow-y:auto;padding:18px 20px;padding-bottom:calc(20px + var(--safe-bottom))}
+
+/* BUDGET SPLIT */
+.split-total-bar{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 15px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.split-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 14px;margin-bottom:7px;display:flex;align-items:center;gap:10px}
+.split-item-name{flex:1;font-size:13px;font-weight:500}
+.split-item-alloc{font-family:var(--mono);font-size:11px;color:var(--text3);min-width:58px;text-align:right}
+.split-pct-inp{width:60px;text-align:right;font-family:var(--mono);font-size:14px;padding:7px 9px}
+
+/* CATEGORIES */
+.cat-mgr-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 14px;margin-bottom:7px;display:flex;align-items:center;gap:10px}
+.cat-mgr-info{flex:1;min-width:0}
+.cat-mgr-name{font-size:13px;font-weight:500}
+.cat-mgr-count{font-size:11px;color:var(--text3);margin-top:2px}
+.cat-mgr-actions{display:flex;gap:5px}
+
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:300;display:none;align-items:flex-end}
+.modal-overlay.active{display:flex;animation:fadeIn 0.2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{width:100%;background:var(--bg2);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--safe-bottom));animation:slideUp 0.25s cubic-bezier(0.4,0,0.2,1);max-height:90dvh;overflow-y:auto}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-handle{width:36px;height:4px;background:var(--bg4);border-radius:2px;margin:0 auto 18px}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:18px}
+.modal-field{margin-bottom:13px}
+.modal-field label{display:block;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.modal-actions{display:flex;gap:8px;margin-top:18px}
+.modal-actions .btn{flex:1}
+
+/* CHIP GROUP */
+.chip-group{display:flex;gap:8px;flex-wrap:wrap}
+.chip-opt{padding:8px 14px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:13px;font-family:var(--font);cursor:pointer;transition:all 0.15s}
+.chip-opt.selected{background:var(--accent);border-color:var(--accent);color:white}
+
+/* TOAST */
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-20px);background:var(--bg3);border:1px solid var(--border2);border-radius:24px;padding:9px 18px;font-size:13px;font-weight:500;z-index:500;opacity:0;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);white-space:nowrap;max-width:calc(100vw - 40px);text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* LOADING DOTS */
+.ldots{display:inline-flex;gap:4px;align-items:center}
+.ldots span{width:5px;height:5px;border-radius:50%;background:currentColor;animation:dbounce 1.4s infinite ease-in-out}
+.ldots span:nth-child(2){animation-delay:0.2s}
+.ldots span:nth-child(3){animation-delay:0.4s}
+@keyframes dbounce{0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1}}
+
+/* KEY WIDGET */
+.key-wrap{position:relative}
+.key-toggle{position:absolute;right:11px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px;line-height:1}
+.key-wrap input{padding-right:38px}
+.key-status{font-size:12px;margin-top:7px;display:flex;align-items:center;gap:6px}
+.key-status.valid{color:var(--green)}
+.key-status.invalid{color:var(--red)}
+.key-status.checking{color:var(--accent2)}
+
+/* FIXED ADD ROW */
+.fixed-add-row{display:flex;gap:7px;margin-top:10px}
+.fixed-add-row>*:first-child{flex:2}
+.fixed-add-row>.input-pfx-wrap{flex:1}
+
+/* UTILS */
+.hidden{display:none!important}
+.mt8{margin-top:8px}
+.mt10{margin-top:10px}
+.mt14{margin-top:14px}
+.flex{display:flex}
+.gap8{gap:8px}
+.c-green{color:var(--green)}
+.c-yellow{color:var(--yellow)}
+.c-red{color:var(--red)}
+.c-accent{color:var(--accent2)}
+
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888899' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;padding-right:34px}
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup">
+  <div class="setup-logo">kharcha<span>.</span></div>
+  <div class="setup-sub">// your smart money companion</div>
+  <div class="setup-card">
+    <div class="setup-label">Monthly Budget</div>
+    <div class="input-pfx-wrap">
+      <span class="input-pfx">₹</span>
+      <input type="number" id="setup-budget" placeholder="50000" min="1">
+    </div>
+    <div class="setup-divider"></div>
+    <div class="setup-label">Gemini API Key</div>
+    <div class="key-wrap">
+      <input type="password" id="setup-key" placeholder="AIza...">
+      <button class="key-toggle" onclick="toggleKey('setup-key',this)">👁</button>
+    </div>
+    <div class="setup-hint">Free key from <strong>aistudio.google.com</strong> — powers NL logging, insights & smart budget split. 1,500 req/day free.</div>
+    <div id="setup-key-status" class="key-status hidden"></div>
+    <div class="mt14">
+      <button class="btn btn-primary" onclick="doSetup()">Get Started →</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="app-content">
+
+    <!-- HOME PAGE -->
+    <div class="page active" id="page-home">
+      <div class="home-header">
+        <div class="month-selector">
+          <button class="month-btn" onclick="changeMonth(-1)">‹</button>
+          <div style="flex:1;text-align:center"><div class="month-label" id="month-label"></div></div>
+          <button class="month-btn" onclick="changeMonth(1)">›</button>
+        </div>
+        <div class="budget-card">
+          <div class="budget-top">
+            <div>
+              <div class="spent-amount" id="spent-display">₹0</div>
+              <div class="spent-label">spent this month</div>
+            </div>
+            <div class="health-badge">
+              <div class="health-score" id="health-score">—</div>
+              <div class="health-label">health</div>
+            </div>
+          </div>
+          <div class="master-bar"><div class="master-bar-fill" id="master-fill" style="width:0%"></div></div>
+          <div class="budget-footer">
+            <span id="budget-left">₹0 left</span>
+            <span id="budget-of">of ₹0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- API Banner -->
+      <div class="api-banner hidden" id="api-banner" onclick="switchTab('settings')">
+        <span style="font-size:20px">🔑</span>
+        <div style="flex:1">
+          <div class="api-banner-title">Set up Gemini API Key</div>
+          <div class="api-banner-sub">Required for smart features · Tap to go to Settings</div>
+        </div>
+        <span style="color:var(--text3)">›</span>
+      </div>
+
+      <!-- Insight Card -->
+      <div class="insight-card">
+        <div class="insight-header">
+          <div class="insight-title">✦ AI INSIGHT</div>
+          <button class="insight-refresh-btn" id="insight-refresh-btn" onclick="refreshInsights()" title="Refresh">↻</button>
+        </div>
+        <div class="insight-text" id="insight-text"><span class="ldots"><span></span><span></span><span></span></span></div>
+      </div>
+
+      <!-- Parsing indicator -->
+      <div class="parsing-ind" id="parsing-ind">
+        <span class="ldots"><span></span><span></span><span></span></span>
+        <span>Parsing your expense…</span>
+      </div>
+
+      <!-- Quick Add -->
+      <div class="quick-add">
+        <input type="text" id="quick-input" placeholder="chai 30, groceries 450, uber 120…" onkeydown="if(event.key==='Enter')addExpense()">
+        <button class="qa-btn" onclick="addExpense()">+</button>
+      </div>
+
+      <!-- Category Bars -->
+      <div class="sec-hdr"><div class="sec-title">Budget Breakdown</div></div>
+      <div class="cat-bars" id="cat-bars"></div>
+
+      <!-- Dist Chips -->
+      <div class="sec-hdr"><div class="sec-title">Spending Mix</div></div>
+      <div class="dist-chips" id="dist-chips"></div>
+
+      <!-- Fixed Section -->
+      <div id="fixed-home-section" class="hidden">
+        <div class="sec-hdr">
+          <div class="sec-title">Fixed Expenses</div>
+          <span id="fixed-total-lbl" style="font-family:var(--mono);font-size:12px;color:var(--text3)"></span>
+        </div>
+        <div class="fixed-sec-home" style="margin:0 20px 18px">
+          <div id="fixed-home-list"></div>
+        </div>
+      </div>
+
+      <!-- Transactions -->
+      <div class="sec-hdr">
+        <div class="sec-title">Transactions</div>
+        <span id="tx-count-lbl" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+      <div class="tx-list" id="tx-list"></div>
+      <div style="height:6px"></div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div class="page" id="page-settings">
+      <div class="page-hdr">
+        <div class="page-hdr-title">Settings</div>
+        <div class="page-hdr-sub">Manage Kharcha preferences</div>
+      </div>
+      <div class="settings-content">
+
+        <!-- AI -->
+        <div class="settings-sec">
+          <div class="settings-sec-title">AI</div>
+          <div class="settings-group">
+            <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(124,106,247,0.1)">🔑</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Gemini API Key</div>
+                <div class="s-row-sub" id="key-sub">Not set</div>
+                <div class="key-wrap mt8 hidden" id="key-edit-area">
+                  <input type="password" id="s-key-input" placeholder="AIza...">
+                  <button class="key-toggle" onclick="toggleKey('s-key-input',this)">👁</button>
+                </div>
+                <div id="s-key-status" class="key-status hidden mt8"></div>
+                <div class="flex gap8 mt8 hidden" id="key-edit-btns">
+                  <button class="btn btn-ghost btn-sm" onclick="cancelKeyEdit()">Cancel</button>
+                  <button class="btn btn-primary btn-sm" onclick="saveKey()">Save Key</button>
+                </div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-ghost btn-xs" onclick="toggleKeyEdit()" id="key-edit-toggle">Edit</button>
+              </div>
+            </div>
+            <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(124,106,247,0.1)">💡</div>
+              <div class="s-row-content">
+                <div class="s-row-label">AI Insights</div>
+                <div class="s-row-sub" id="insights-date-sub">Never refreshed</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-ai btn-sm" onclick="refreshInsights(true)" id="s-refresh-btn">↻ Refresh</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Budget -->
+        <div class="settings-sec">
+          <div class="settings-sec-title">Budget</div>
+          <div class="settings-group">
+            <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(46,204,136,0.1)">💰</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Monthly Budget</div>
+                <div class="input-pfx-wrap mt8" style="max-width:150px">
+                  <span class="input-pfx">₹</span>
+                  <input type="number" id="s-budget" style="font-family:var(--mono)" onchange="saveBudget()">
+                </div>
+              </div>
+            </div>
+            <div class="s-row tappable" onclick="openSubPage('sp-split')">
+              <div class="s-row-icon" style="background:rgba(245,166,35,0.1)">📊</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Budget Split</div>
+                <div class="s-row-sub" id="split-sub">Not configured</div>
+              </div>
+              <div class="s-arrow">›</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fixed Expenses -->
+        <div class="settings-sec">
+          <div class="settings-sec-title">Fixed Expenses</div>
+          <div class="settings-group">
+            <div id="fixed-s-list"></div>
+            <div class="s-row">
+              <div class="s-row-content">
+                <div class="s-row-label" style="font-size:13px;color:var(--text3)">Add Fixed Expense</div>
+                <div class="fixed-add-row">
+                  <input type="text" id="fx-name" placeholder="Rent, parents, EMI…">
+                  <div class="input-pfx-wrap">
+                    <span class="input-pfx">₹</span>
+                    <input type="number" id="fx-amt" placeholder="5000">
+                  </div>
+                </div>
+                <div class="mt8">
+                  <button class="btn btn-ghost btn-sm" onclick="addFixed()">+ Add</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categories -->
+        <div class="settings-sec">
+          <div class="settings-sec-title">Categories</div>
+          <div class="settings-group">
+            <div class="s-row tappable" onclick="openSubPage('sp-cats')">
+              <div class="s-row-icon" style="background:rgba(255,79,106,0.1)">🏷️</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Manage Categories</div>
+                <div class="s-row-sub" id="cats-count-sub">0 categories</div>
+              </div>
+              <div class="s-arrow">›</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data -->
+        <div class="settings-sec">
+          <div class="settings-sec-title">Data</div>
+          <div class="settings-group">
+            <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(255,79,106,0.1)">🗑️</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Clear All Data</div>
+                <div class="s-row-sub">Wipes all expenses, categories, budget</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-danger btn-sm" onclick="clearAll()">Clear</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <div class="tab-item active" id="tab-home" onclick="switchTab('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <div class="tab-label">Home</div>
+    </div>
+    <div class="tab-item" id="tab-settings" onclick="switchTab('settings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <div class="tab-label">Settings</div>
+    </div>
+  </div>
+</div>
+
+<!-- SUB-PAGES -->
+<div class="sub-page" id="sp-split">
+  <div class="sub-page-hdr">
+    <button class="sub-page-back" onclick="closeSubPage('sp-split')">‹</button>
+    <div class="sub-page-title">Budget Split</div>
+  </div>
+  <div class="sub-page-content">
+    <div class="split-total-bar">
+      <span style="font-size:13px;color:var(--text2)">Total allocated</span>
+      <span class="split-total-val" id="split-total-disp" style="font-family:var(--mono);font-size:18px;font-weight:500">0%</span>
+    </div>
+    <div id="split-items-list"></div>
+    <div class="flex gap8 mt14">
+      <button class="btn btn-ai" onclick="aiSuggestSplit()" id="split-ai-btn">✦ Gemini Suggest</button>
+      <button class="btn btn-primary" onclick="saveSplit()" id="split-save-btn" disabled>Save Split</button>
+    </div>
+  </div>
+</div>
+
+<div class="sub-page" id="sp-cats">
+  <div class="sub-page-hdr">
+    <button class="sub-page-back" onclick="closeSubPage('sp-cats')">‹</button>
+    <div class="sub-page-title">Categories</div>
+  </div>
+  <div class="sub-page-content">
+    <div id="cats-mgr-list"></div>
+    <div style="font-size:12px;color:var(--text3);margin-top:14px;line-height:1.6">Categories are created automatically by Gemini when you log expenses. Rename, merge, or delete here.</div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<!-- Edit TX -->
+<div class="modal-overlay" id="modal-tx">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Transaction</div>
+    <div class="modal-field"><label>Description</label><input type="text" id="tx-e-desc"></div>
+    <div class="modal-field"><label>Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="tx-e-amt" step="0.01"></div></div>
+    <div class="modal-field"><label>Category</label><select id="tx-e-cat"></select></div>
+    <div class="modal-field"><label>Date</label><input type="date" id="tx-e-date"></div>
+    <div class="modal-field"><label>Type</label>
+      <div class="chip-group" id="tx-type-chips">
+        <div class="chip-opt selected" data-v="expense" onclick="selectTxType('expense',this)">Expense</div>
+        <div class="chip-opt" data-v="refund" onclick="selectTxType('refund',this)">Refund</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteTx()">Delete</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-tx')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTx()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Category -->
+<div class="modal-overlay" id="modal-new-cat">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">New Category: <span id="new-cat-display" style="color:var(--accent2)"></span></div>
+    <p style="font-size:13px;color:var(--text3);margin-bottom:16px;line-height:1.6">Gemini detected a new category. What would you like to do with it?</p>
+    <div class="modal-field"><label>Rename to</label><input type="text" id="new-cat-rename"></div>
+    <div class="modal-field"><label>Or merge into existing</label><select id="new-cat-merge"><option value="">— Keep as new category —</option></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="confirmNewCat('keep')">Keep As-Is</button>
+      <button class="btn btn-primary" onclick="confirmNewCat('action')">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Category -->
+<div class="modal-overlay" id="modal-rename">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Rename Category</div>
+    <div class="modal-field"><label>New name</label><input type="text" id="rename-inp"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-rename')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRename()">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- Merge Category -->
+<div class="modal-overlay" id="modal-merge">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Merge Category</div>
+    <p style="font-size:13px;color:var(--text3);margin-bottom:14px">All transactions from <strong id="merge-from-lbl" style="color:var(--text)"></strong> will move to the selected category.</p>
+    <div class="modal-field"><label>Merge into</label><select id="merge-into-sel"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-merge')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmMerge()">Merge</button>
+    </div>
+  </div>
+</div>
+
+<!-- Split Approval -->
+<div class="modal-overlay" id="modal-split-ok">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Review Budget Split</div>
+    <p style="font-size:13px;color:var(--text3);margin-bottom:14px;line-height:1.6">Gemini suggested an updated split after the new category. Review and apply.</p>
+    <div id="split-ok-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-split-ok')">Skip</button>
+      <button class="btn btn-primary" onclick="applySplitModal()">Apply Split</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════
+// DATA
+// ═══════════════════════════════
+const SK = 'kharcha_v1';
+function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false}}
+function load(){try{const r=localStorage.getItem(SK);return r?{...defData(),...JSON.parse(r)}:defData()}catch{return defData()}}
+function save(){localStorage.setItem(SK,JSON.stringify(S))}
+let S=load();
+
+// ═══════════════════════════════
+// HELPERS
+// ═══════════════════════════════
+const CAT_EMOJI={food:'🍛',groceries:'🛒',grocery:'🛒',transport:'🚗',travel:'✈️',entertainment:'🎬',shopping:'🛍️',health:'💊',fitness:'🏋️',education:'📚',bills:'📋',utilities:'💡',rent:'🏠',savings:'💰',investment:'📈',personal:'👤',clothing:'👗',dining:'🍽️',coffee:'☕',subscriptions:'📱',gifts:'🎁',family:'👨‍👩‍👧',parents:'❤️',pet:'🐾',beauty:'💄',electronics:'💻',fuel:'⛽',medical:'🏥',social:'🎉',uncategorized:'📌',misc:'📌',other:'📌'};
+function catEmoji(c){if(!c)return'📌';const l=c.toLowerCase();for(const[k,v]of Object.entries(CAT_EMOJI))if(l.includes(k))return v;return'🏷️'}
+function catColor(p){return p>=90?'var(--red)':p>=70?'var(--yellow)':'var(--green)'}
+function fmt(n){if(!n&&n!==0)return'0';n=parseFloat(n);if(isNaN(n))return'0';return n>=1000?n.toLocaleString('en-IN',{maximumFractionDigits:0}):n%1===0?n.toString():n.toFixed(2)}
+function sid(s){return(s||'').replace(/[^a-z0-9]/gi,'_')}
+function esc(s){return(s||'').replace(/'/g,"\\'")}
+
+let curYear=new Date().getFullYear(),curMonth=new Date().getMonth();
+
+function getMonthLabel(y,m){return new Date(y,m,1).toLocaleString('default',{month:'long',year:'numeric'})}
+function changeMonth(d){curMonth+=d;if(curMonth<0){curMonth=11;curYear--}if(curMonth>11){curMonth=0;curYear++}renderHome()}
+function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===curYear&&d.getMonth()===curMonth})}
+
+// ═══════════════════════════════
+// GEMINI
+// ═══════════════════════════════
+const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+async function callGemini(prompt,key){
+  const k=key||S.geminiKey;
+  if(!k)throw new Error('No key');
+  const r=await fetch(`${GURL}?key=${k}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:800}})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||`HTTP ${r.status}`)}
+  const d=await r.json();
+  return d.candidates?.[0]?.content?.parts?.[0]?.text||''
+}
+async function validateKey(k){await callGemini('Say OK',k);return true}
+
+// ═══════════════════════════════
+// SETUP
+// ═══════════════════════════════
+async function doSetup(){
+  const budget=parseFloat(document.getElementById('setup-budget').value);
+  const key=document.getElementById('setup-key').value.trim();
+  if(!budget||budget<=0){toast('Enter a valid budget');return}
+  if(!key){toast('Enter your Gemini API key');return}
+  const st=document.getElementById('setup-key-status');
+  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating…';st.classList.remove('hidden');
+  try{
+    await validateKey(key);
+    S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
+    st.className='key-status valid';st.textContent='✓ Key validated!';
+    setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
+  }catch{st.className='key-status invalid';st.textContent='✗ Invalid key. Try again.'}
+}
+
+// ═══════════════════════════════
+// INIT
+// ═══════════════════════════════
+function initApp(){renderHome();renderSettings();autoInsights()}
+function autoInsights(){
+  const today=new Date().toISOString().split('T')[0];
+  if(S.insightsDate!==today&&S.geminiKey)refreshInsights();
+  else if(S.insights)document.getElementById('insight-text').textContent=S.insights;
+  else document.getElementById('insight-text').textContent='Log some expenses to get AI insights!';
+}
+
+// ═══════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════
+function switchTab(t){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(i=>i.classList.remove('active'));
+  document.getElementById(`page-${t}`).classList.add('active');
+  document.getElementById(`tab-${t}`).classList.add('active');
+  document.querySelector('.app-content').scrollTop=0;
+}
+function openSubPage(id){
+  if(id==='sp-split')renderSplitPage();
+  if(id==='sp-cats')renderCatsPage();
+  document.getElementById(id).classList.add('active');
+}
+function closeSubPage(id){
+  document.getElementById(id).classList.remove('active');
+  renderSettings();
+}
+
+// ═══════════════════════════════
+// ADD EXPENSE
+// ═══════════════════════════════
+let pendingCat=null,pendingCatResolve=null,pendingTx=null;
+
+async function addExpense(){
+  const inp=document.getElementById('quick-input');
+  const text=inp.value.trim();
+  if(!text)return;
+  if(!S.geminiKey){toast('Set Gemini API key in Settings');return}
+  inp.value='';inp.disabled=true;
+  document.getElementById('parsing-ind').classList.add('active');
+  try{
+    const cats=S.categories.length>0?`Known categories: ${S.categories.join(', ')}.`:'No categories yet — create new ones.';
+    const prompt=`Parse this expense and return ONLY valid JSON, no markdown.
+Input: "${text}"
+${cats}
+Return: {"description":"...","amount":number,"category":"...","emoji":"...","isRefund":false}
+Rules: amount must be positive. category = concise 1-2 words Title Case. isRefund=true if mentions refund/return/reimbursement.`;
+    const raw=await callGemini(prompt);
+    const parsed=JSON.parse(raw.replace(/```json?|```/gi,'').trim());
+    const{description,amount,category,emoji,isRefund}=parsed;
+    if(!amount||isNaN(amount))throw new Error('No amount');
+    const isNew=category&&!S.categories.includes(category);
+    if(isNew&&S.categories.length>0){
+      pendingTx={description,amount,category,emoji,isRefund};
+      await showNewCatModal(category);
+    }else{
+      if(isNew)addCat(category);
+      commitTx({description,amount,category,emoji,isRefund});
+    }
+  }catch(e){toast('Could not parse. Try: "coffee 50"');console.error(e)}
+  finally{inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
+}
+
+function commitTx({description,amount,category,emoji,isRefund}){
+  S.expenses.unshift({id:Date.now().toString(),date:new Date().toISOString().split('T')[0],description:description||'Expense',amount:parseFloat(amount),category:category||'Uncategorized',emoji:emoji||catEmoji(category),isRefund:!!isRefund});
+  save();renderHome();toast(`Added: ${description} ₹${fmt(amount)}`);
+}
+
+function addCat(c){if(c&&!S.categories.includes(c)){S.categories.push(c);save()}}
+
+function showNewCatModal(name){
+  return new Promise(r=>{
+    pendingCatResolve=r;pendingCat=name;
+    document.getElementById('new-cat-display').textContent=name;
+    document.getElementById('new-cat-rename').value=name;
+    const sel=document.getElementById('new-cat-merge');
+    sel.innerHTML='<option value="">— Keep as new category —</option>';
+    S.categories.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;sel.appendChild(o)});
+    openModal('modal-new-cat');
+  });
+}
+
+function confirmNewCat(action){
+  closeModal('modal-new-cat');
+  if(action==='keep'){
+    addCat(pendingCat);
+    if(pendingTx){commitTx(pendingTx);pendingTx=null}
+    pendingCatResolve?.();
+    if(S.geminiKey&&S.categories.length>1)aiSuggestAndApprove();
+    return;
+  }
+  const merge=document.getElementById('new-cat-merge').value;
+  const renamed=document.getElementById('new-cat-rename').value.trim();
+  if(merge){
+    if(pendingTx){pendingTx.category=merge;commitTx(pendingTx);pendingTx=null}
+  }else if(renamed&&renamed!==pendingCat){
+    addCat(renamed);
+    if(pendingTx){pendingTx.category=renamed;commitTx(pendingTx);pendingTx=null}
+  }else{
+    addCat(pendingCat);
+    if(pendingTx){commitTx(pendingTx);pendingTx=null}
+  }
+  pendingCatResolve?.();
+  if(S.geminiKey&&S.categories.length>1)aiSuggestAndApprove();
+}
+
+// ═══════════════════════════════
+// HOME RENDER
+// ═══════════════════════════════
+function renderHome(){
+  document.getElementById('month-label').textContent=getMonthLabel(curYear,curMonth);
+  const txs=getMonthTxs();
+  const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
+  const flexBudget=Math.max(0,S.budget-fixedTotal);
+  const spent=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
+  const pct=flexBudget>0?Math.min(spent/flexBudget*100,100):0;
+
+  document.getElementById('spent-display').textContent='₹'+fmt(spent);
+  document.getElementById('budget-left').textContent='₹'+fmt(Math.max(0,flexBudget-spent))+' left';
+  document.getElementById('budget-of').textContent='of ₹'+fmt(flexBudget);
+  const fill=document.getElementById('master-fill');
+  fill.style.width=pct+'%';fill.style.background=catColor(pct);
+  const h=Math.max(0,Math.round(100-pct));
+  const hEl=document.getElementById('health-score');
+  hEl.textContent=h;hEl.className='health-score '+(h>=70?'c-green':h>=40?'c-yellow':'c-red');
+  document.getElementById('api-banner').classList.toggle('hidden',!!S.geminiKey);
+
+  renderCatBars(txs,flexBudget);
+  renderDistChips(txs,spent);
+  renderFixedHome();
+  renderTxList(txs);
+}
+
+function renderCatBars(txs,fb){
+  const c=document.getElementById('cat-bars');
+  if(!S.categories.length){c.innerHTML='<div style="font-size:13px;color:var(--text3)">Log expenses to see breakdown</div>';return}
+  const spend={};
+  txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+  txs.filter(e=>e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)-e.amount});
+  c.innerHTML=S.categories.map(cat=>{
+    const s=Math.max(0,spend[cat]||0);
+    const pct=S.budgetSplit[cat]||0;
+    const alloc=fb*pct/100;
+    const bp=alloc>0?Math.min(s/alloc*100,100):0;
+    return`<div class="cat-bar-item">
+      <div class="cat-bar-hdr">
+        <div class="cat-bar-name"><span>${catEmoji(cat)}</span>${cat}</div>
+        <div class="cat-bar-amts">₹${fmt(s)}${alloc>0?' / ₹'+fmt(alloc):''}</div>
+      </div>
+      <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${bp}%;background:${catColor(bp)}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderDistChips(txs,total){
+  const c=document.getElementById('dist-chips');
+  if(!total||!S.categories.length){c.innerHTML='';return}
+  const spend={};txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+  c.innerHTML=Object.entries(spend).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1])
+    .map(([cat,amt])=>`<div class="dist-chip"><span>${catEmoji(cat)}</span><span class="dist-chip-pct">${Math.round(amt/total*100)}%</span><span class="dist-chip-name">${cat}</span></div>`).join('');
+}
+
+function renderFixedHome(){
+  const sec=document.getElementById('fixed-home-section');
+  const list=document.getElementById('fixed-home-list');
+  if(!S.fixedExpenses.length){sec.classList.add('hidden');return}
+  sec.classList.remove('hidden');
+  document.getElementById('fixed-total-lbl').textContent='₹'+fmt(S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+  list.innerHTML=S.fixedExpenses.map(f=>`<div class="fixed-item"><div>${f.name}</div><div class="fixed-item-amt">₹${fmt(f.amount)}/mo</div></div>`).join('');
+}
+
+function renderTxList(txs){
+  const c=document.getElementById('tx-list');
+  const sorted=[...txs].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  document.getElementById('tx-count-lbl').textContent=sorted.length?`${sorted.length} transactions`:'';
+  if(!sorted.length){c.innerHTML='<div class="tx-empty">No expenses this month<br><span style="font-size:12px">Type anything above to log!</span></div>';return}
+  c.innerHTML=sorted.map(tx=>{
+    const sign=tx.isRefund?'+':'-';const cls=tx.isRefund?'pos':'';
+    const dt=new Date(tx.date+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+    return`<div class="tx-item" onclick="openTxModal('${tx.id}')">
+      <div class="tx-emoji-box">${tx.emoji||catEmoji(tx.category)}</div>
+      <div class="tx-info">
+        <div class="tx-desc">${tx.description}</div>
+        <div class="tx-meta"><span>${dt}</span><span class="tx-cat-tag">${tx.category||'Uncategorized'}</span>${tx.isRefund?'<span class="tx-refund-badge">REFUND</span>':''}</div>
+      </div>
+      <div class="tx-amount ${cls}">${sign}₹${fmt(tx.amount)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════
+// SETTINGS RENDER
+// ═══════════════════════════════
+function renderSettings(){
+  document.getElementById('key-sub').textContent=S.geminiKey?'•••••••••'+S.geminiKey.slice(-4):'Not set';
+  document.getElementById('s-budget').value=S.budget||'';
+  document.getElementById('insights-date-sub').textContent=S.insightsDate?`Last updated: ${S.insightsDate}`:'Never refreshed';
+  const sk=Object.keys(S.budgetSplit);
+  document.getElementById('split-sub').textContent=sk.length?`${sk.length} categories · `+sk.slice(0,2).map(k=>`${k} ${S.budgetSplit[k]}%`).join(', ')+(sk.length>2?'…':''):'Not configured';
+  renderFixedSettings();
+  document.getElementById('cats-count-sub').textContent=`${S.categories.length} ${S.categories.length===1?'category':'categories'}`;
+}
+
+function renderFixedSettings(){
+  document.getElementById('fixed-s-list').innerHTML=S.fixedExpenses.map(f=>`
+    <div class="s-row">
+      <div class="s-row-icon" style="background:var(--yellow-dim)">📌</div>
+      <div class="s-row-content">
+        <div class="s-row-label">${f.name}</div>
+        <div class="s-row-sub" style="font-family:var(--mono)">₹${fmt(f.amount)}/month</div>
+      </div>
+      <div class="s-row-right"><button class="btn btn-danger btn-xs" onclick="deleteFixed('${esc(f.id)}')">Remove</button></div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════
+// SETTINGS ACTIONS
+// ═══════════════════════════════
+function toggleKey(id,btn){const i=document.getElementById(id);i.type=i.type==='password'?'text':'password';btn.textContent=i.type==='password'?'👁':'🙈'}
+
+function toggleKeyEdit(){
+  const a=document.getElementById('key-edit-area'),b=document.getElementById('key-edit-btns'),t=document.getElementById('key-edit-toggle');
+  const showing=!a.classList.contains('hidden');
+  a.classList.toggle('hidden',showing);b.classList.toggle('hidden',showing);
+  t.textContent=showing?'Edit':'Cancel';
+  if(!showing){document.getElementById('s-key-input').value='';document.getElementById('s-key-input').focus()}
+}
+function cancelKeyEdit(){document.getElementById('key-edit-area').classList.add('hidden');document.getElementById('key-edit-btns').classList.add('hidden');document.getElementById('key-edit-toggle').textContent='Edit';document.getElementById('s-key-status').classList.add('hidden')}
+
+async function saveKey(){
+  const k=document.getElementById('s-key-input').value.trim();
+  if(!k){toast('Enter a key');return}
+  const st=document.getElementById('s-key-status');
+  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating…';st.classList.remove('hidden');
+  try{
+    await validateKey(k);S.geminiKey=k;save();
+    st.className='key-status valid';st.textContent='✓ Saved!';
+    setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},1000)
+  }catch{st.className='key-status invalid';st.textContent='✗ Invalid key'}
+}
+
+function saveBudget(){const v=parseFloat(document.getElementById('s-budget').value);if(v>0){S.budget=v;save();renderHome();toast('Budget updated')}}
+
+function addFixed(){
+  const name=document.getElementById('fx-name').value.trim();
+  const amt=parseFloat(document.getElementById('fx-amt').value);
+  if(!name||!amt||amt<=0){toast('Enter name and amount');return}
+  S.fixedExpenses.push({id:Date.now().toString(),name,amount:amt});save();
+  document.getElementById('fx-name').value='';document.getElementById('fx-amt').value='';
+  renderSettings();renderHome();toast(`Added: ${name}`);
+  if(S.geminiKey&&S.categories.length>0)aiSuggestAndApprove();
+}
+function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);save();renderSettings();renderHome()}
+
+function clearAll(){if(!confirm('Clear ALL data? Cannot be undone.'))return;S=defData();save();document.getElementById('app').style.display='none';document.getElementById('setup').style.display='flex';document.getElementById('setup-budget').value='';document.getElementById('setup-key').value='';document.getElementById('setup-key-status').classList.add('hidden')}
+
+// ═══════════════════════════════
+// BUDGET SPLIT
+// ═══════════════════════════════
+function renderSplitPage(){
+  const c=document.getElementById('split-items-list');
+  if(!S.categories.length){c.innerHTML='<div style="font-size:14px;color:var(--text3)">No categories yet. Log some expenses first!</div>';return}
+  const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+  c.innerHTML=S.categories.map(cat=>{
+    const pct=S.budgetSplit[cat]||0;
+    const alloc=fb*pct/100;
+    return`<div class="split-item">
+      <div class="split-item-name">${catEmoji(cat)} ${cat}</div>
+      <div class="split-item-alloc" id="sa-${sid(cat)}">₹${fmt(alloc)}</div>
+      <input type="number" class="split-pct-inp" id="sp-${sid(cat)}" value="${pct}" min="0" max="100" oninput="updateSplitTotal()">
+    </div>`;
+  }).join('');
+  updateSplitTotal();
+}
+
+function updateSplitTotal(){
+  const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+  let total=0;
+  S.categories.forEach(cat=>{
+    const inp=document.getElementById(`sp-${sid(cat)}`);if(!inp)return;
+    const p=parseFloat(inp.value)||0;total+=p;
+    const ae=document.getElementById(`sa-${sid(cat)}`);if(ae)ae.textContent='₹'+fmt(fb*p/100);
+  });
+  const el=document.getElementById('split-total-disp');
+  el.textContent=Math.round(total)+'%';
+  el.className='split-total-val '+(Math.abs(total-100)<1?'c-green':total>100?'c-red':'c-yellow');
+  document.getElementById('split-save-btn').disabled=Math.abs(total-100)>=1;
+}
+
+function saveSplit(){
+  S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i)S.budgetSplit[cat]=parseFloat(i.value)||0});
+  save();renderHome();toast('Budget split saved!');
+}
+
+async function aiSuggestSplit(){
+  if(!S.geminiKey){toast('Set API key first');return}
+  if(!S.categories.length){toast('No categories yet');return}
+  const btn=document.getElementById('split-ai-btn');
+  btn.disabled=true;btn.innerHTML='<span class="ldots"><span></span><span></span><span></span></span>';
+  try{
+    const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+    const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
+    const raw=await callGemini(prompt);
+    const sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim());
+    S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
+    updateSplitTotal();toast('Gemini suggested a split!');
+  }catch(e){toast('Could not get suggestion');console.error(e)}
+  finally{btn.disabled=false;btn.innerHTML='✦ Gemini Suggest'}
+}
+
+async function aiSuggestAndApprove(){
+  if(!S.geminiKey||!S.categories.length)return;
+  try{
+    const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+    const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
+    const raw=await callGemini(prompt);
+    const sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim());
+    const list=document.getElementById('split-ok-list');
+    list.innerHTML=Object.entries(sug).map(([cat,p])=>`<div class="split-item" style="margin-bottom:7px"><div class="split-item-name">${catEmoji(cat)} ${cat}</div><div style="font-family:var(--mono);font-size:15px;color:var(--accent2)">${p}%</div></div>`).join('');
+    list.dataset.sug=JSON.stringify(sug);
+    openModal('modal-split-ok');
+  }catch(e){console.error(e)}
+}
+
+function applySplitModal(){
+  try{
+    const sug=JSON.parse(document.getElementById('split-ok-list').dataset.sug||'{}');
+    Object.entries(sug).forEach(([cat,p])=>{if(S.categories.includes(cat))S.budgetSplit[cat]=p});
+    save();renderHome();toast('Budget split applied!');
+  }catch{}
+  closeModal('modal-split-ok');
+}
+
+// ═══════════════════════════════
+// CATEGORIES
+// ═══════════════════════════════
+let renamingCat=null,mergingCat=null;
+
+function renderCatsPage(){
+  const c=document.getElementById('cats-mgr-list');
+  if(!S.categories.length){c.innerHTML='<div style="font-size:14px;color:var(--text3)">No categories yet</div>';return}
+  c.innerHTML=S.categories.map(cat=>{
+    const count=S.expenses.filter(e=>e.category===cat).length;
+    return`<div class="cat-mgr-item">
+      <div class="cat-mgr-info">
+        <div class="cat-mgr-name">${catEmoji(cat)} ${cat}</div>
+        <div class="cat-mgr-count">${count} transaction${count!==1?'s':''}</div>
+      </div>
+      <div class="cat-mgr-actions">
+        <button class="btn btn-ghost btn-xs" onclick="openRename('${esc(cat)}')">Rename</button>
+        <button class="btn btn-ghost btn-xs" onclick="openMerge('${esc(cat)}')">Merge</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteCat('${esc(cat)}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openRename(cat){renamingCat=cat;document.getElementById('rename-inp').value=cat;openModal('modal-rename')}
+function confirmRename(){
+  const n=document.getElementById('rename-inp').value.trim();
+  if(!n||n===renamingCat){closeModal('modal-rename');return}
+  if(S.categories.includes(n)){toast('Category already exists');return}
+  const i=S.categories.indexOf(renamingCat);S.categories[i]=n;
+  S.expenses.forEach(e=>{if(e.category===renamingCat)e.category=n});
+  if(S.budgetSplit[renamingCat]!==undefined){S.budgetSplit[n]=S.budgetSplit[renamingCat];delete S.budgetSplit[renamingCat]}
+  save();closeModal('modal-rename');renderCatsPage();renderHome();toast(`Renamed to ${n}`)
+}
+
+function openMerge(cat){
+  mergingCat=cat;document.getElementById('merge-from-lbl').textContent=cat;
+  const sel=document.getElementById('merge-into-sel');
+  sel.innerHTML=S.categories.filter(c=>c!==cat).map(c=>`<option value="${c}">${c}</option>`).join('');
+  openModal('modal-merge');
+}
+function confirmMerge(){
+  const t=document.getElementById('merge-into-sel').value;
+  if(!t){closeModal('modal-merge');return}
+  S.expenses.forEach(e=>{if(e.category===mergingCat)e.category=t});
+  if(S.budgetSplit[mergingCat]&&S.budgetSplit[t])S.budgetSplit[t]=(S.budgetSplit[t]||0)+(S.budgetSplit[mergingCat]||0);
+  delete S.budgetSplit[mergingCat];S.categories=S.categories.filter(c=>c!==mergingCat);
+  save();closeModal('modal-merge');renderCatsPage();renderHome();toast(`Merged into ${t}`)
+}
+
+function deleteCat(cat){
+  if(!confirm(`Delete "${cat}"? Transactions move to Uncategorized.`))return;
+  S.expenses.forEach(e=>{if(e.category===cat)e.category='Uncategorized'});
+  delete S.budgetSplit[cat];S.categories=S.categories.filter(c=>c!==cat);
+  if(!S.categories.includes('Uncategorized')&&S.expenses.some(e=>e.category==='Uncategorized'))S.categories.push('Uncategorized');
+  save();renderCatsPage();renderHome();toast(`Deleted ${cat}`)
+}
+
+// ═══════════════════════════════
+// TX MODAL
+// ═══════════════════════════════
+let editTxId=null,editTxRefund=false;
+
+function openTxModal(id){
+  const tx=S.expenses.find(e=>e.id===id);if(!tx)return;
+  editTxId=id;editTxRefund=tx.isRefund;
+  document.getElementById('tx-e-desc').value=tx.description;
+  document.getElementById('tx-e-amt').value=tx.amount;
+  document.getElementById('tx-e-date').value=tx.date;
+  const sel=document.getElementById('tx-e-cat');
+  sel.innerHTML=[...new Set([...S.categories,tx.category,'Uncategorized'])].map(c=>`<option value="${c}"${c===tx.category?' selected':''}>${c}</option>`).join('');
+  document.querySelectorAll('#tx-type-chips .chip-opt').forEach(c=>c.classList.toggle('selected',c.dataset.v===(tx.isRefund?'refund':'expense')));
+  openModal('modal-tx');
+}
+function selectTxType(v,el){editTxRefund=v==='refund';document.querySelectorAll('#tx-type-chips .chip-opt').forEach(c=>c.classList.remove('selected'));el.classList.add('selected')}
+function saveTx(){
+  const tx=S.expenses.find(e=>e.id===editTxId);if(!tx)return;
+  tx.description=document.getElementById('tx-e-desc').value.trim()||tx.description;
+  tx.amount=parseFloat(document.getElementById('tx-e-amt').value)||tx.amount;
+  tx.category=document.getElementById('tx-e-cat').value;
+  tx.date=document.getElementById('tx-e-date').value;
+  tx.isRefund=editTxRefund;tx.emoji=catEmoji(tx.category);
+  save();closeModal('modal-tx');renderHome();toast('Transaction updated');
+}
+function deleteTx(){if(!confirm('Delete this transaction?'))return;S.expenses=S.expenses.filter(e=>e.id!==editTxId);save();closeModal('modal-tx');renderHome();toast('Deleted')}
+
+// ═══════════════════════════════
+// INSIGHTS
+// ═══════════════════════════════
+async function refreshInsights(fromSettings=false){
+  if(!S.geminiKey){toast('Set API key first');return}
+  const btn=document.getElementById('insight-refresh-btn');
+  const textEl=document.getElementById('insight-text');
+  const sbtn=document.getElementById('s-refresh-btn');
+  btn?.classList.add('spinning');
+  if(sbtn){sbtn.disabled=true;sbtn.textContent='↻ Refreshing…'}
+  textEl.innerHTML='<span class="ldots"><span></span><span></span><span></span></span>';
+  try{
+    const txs=getMonthTxs();
+    const flexBudget=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+    const spent=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0);
+    const spend={};txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+    const prompt=`You are a friendly financial advisor for an Indian user. Give a brief 2-3 sentence insight about their spending this month.
+Budget: ₹${flexBudget}, Spent: ₹${spent}, By category: ${JSON.stringify(spend)}, Month: ${getMonthLabel(curYear,curMonth)}.
+Be specific, warm, and actionable. Use ₹ symbols. Plain text only, no markdown, under 60 words.`;
+    const insight=await callGemini(prompt);
+    S.insights=insight.trim();S.insightsDate=new Date().toISOString().split('T')[0];save();
+    textEl.textContent=S.insights;
+    if(fromSettings){renderSettings();toast('Insights refreshed!')}
+  }catch{textEl.textContent='Could not load insights. Check your API key.'}
+  finally{btn?.classList.remove('spinning');if(sbtn){sbtn.disabled=false;sbtn.innerHTML='↻ Refresh'}}
+}
+
+// ═══════════════════════════════
+// MODAL HELPERS
+// ═══════════════════════════════
+function openModal(id){document.getElementById(id).classList.add('active')}
+function closeModal(id){document.getElementById(id).classList.remove('active')}
+document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('active')}));
+
+// ═══════════════════════════════
+// TOAST
+// ═══════════════════════════════
+let toastT=null;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800)}
+
+// ═══════════════════════════════
+// BOOT
+// ═══════════════════════════════
+window.addEventListener('DOMContentLoaded',()=>{
+  if(S.setupDone){document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()}
+  else{document.getElementById('setup').style.display='flex';document.getElementById('app').style.display='none'}
+});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
