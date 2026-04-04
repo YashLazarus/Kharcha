@@ -253,6 +253,22 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 </head>
 <body>
 
+<!-- LOGIN -->
+<div id="login" style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;background:radial-gradient(ellipse at 50% 0%,rgba(124,106,247,0.15) 0%,transparent 70%)">
+  <div style="font-size:48px;font-weight:800;letter-spacing:-2px;margin-bottom:6px">kharcha<span style="color:#a594ff">.</span></div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#55556a;margin-bottom:48px">// your smart money companion</div>
+  <div style="width:100%;max-width:380px;background:#111118;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:28px;text-align:center">
+    <div style="font-size:32px;margin-bottom:12px">👋</div>
+    <div style="font-size:20px;font-weight:700;margin-bottom:8px">Welcome to Kharcha</div>
+    <div style="font-size:13px;color:#888899;margin-bottom:28px;line-height:1.6">Sign in with Google to keep your data safe and synced across devices.</div>
+    <button onclick="signInWithGoogle()" style="width:100%;padding:14px;background:white;border:none;border-radius:10px;color:#1a1a1a;font-family:'Syne',sans-serif;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Continue with Google
+    </button>
+    <div id="login-error" style="color:#ff4f6a;font-size:12px;margin-top:12px;display:none"></div>
+  </div>
+</div>
+
 <!-- SETUP -->
 <div id="setup">
   <div class="setup-logo">kharcha<span>.</span></div>
@@ -380,8 +396,11 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <!-- SETTINGS PAGE -->
     <div class="page" id="page-settings">
       <div class="page-hdr">
-        <div class="page-hdr-title">Settings</div>
-        <div class="page-hdr-sub">Manage Kharcha preferences</div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="page-hdr-title">Settings</div>
+          <button onclick="signOut()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text2);font-size:12px;font-family:var(--font);cursor:pointer">Sign out</button>
+        </div>
+        <div class="page-hdr-sub" id="user-email-sub">Manage Kharcha preferences</div>
       </div>
       <div class="settings-content">
 
@@ -683,9 +702,9 @@ firebase.initializeApp(FB_CONFIG);
 const fbAuth = firebase.auth();
 const fbDb = firebase.database();
 let fbUid = null;
-let fbRef = null;
+let fbListener = null;
 
-function fbPath(){ return fbRef = fbDb.ref(`users/${fbUid}/data`); }
+function fbPath(){ return fbDb.ref(`users/${fbUid}/data`); }
 
 async function fbSave(data){
   if(!fbUid) return;
@@ -702,17 +721,65 @@ async function fbLoad(){
 
 function fbListen(){
   if(!fbUid) return;
-  fbPath().on('value', snap => {
+  if(fbListener) fbPath().off('value', fbListener);
+  fbListener = fbPath().on('value', snap => {
     if(!snap.exists()) return;
     const remote = snap.val();
-    // Only update if remote is newer or has more expenses
-    if(remote && remote.expenses && (!S.expenses || remote.expenses.length >= S.expenses.length)){
+    if(remote && remote.setupDone){
       S = {...defData(), ...remote};
       localStorage.setItem(SK, JSON.stringify(S));
       if(document.getElementById('app').style.display !== 'none'){
         renderHome(); renderSettings();
       }
     }
+  });
+}
+
+async function signInWithGoogle(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  const errEl = document.getElementById('login-error');
+  errEl.style.display='none';
+  try{
+    const result = await fbAuth.signInWithPopup(provider);
+    await onSignedIn(result.user);
+  } catch(e){
+    errEl.textContent = e.message||'Sign in failed. Try again.';
+    errEl.style.display='block';
+  }
+}
+
+async function onSignedIn(user){
+  fbUid = user.uid;
+  // Update UI with user info
+  const sub = document.getElementById('user-email-sub');
+  if(sub) sub.textContent = user.email || user.displayName || 'Signed in';
+  // Load data from Firebase
+  const remote = await fbLoad();
+  if(remote && remote.setupDone){
+    S = {...defData(), ...remote};
+    localStorage.setItem(SK, JSON.stringify(S));
+  }
+  fbListen();
+  // Show correct screen
+  document.getElementById('login').style.display='none';
+  if(S.setupDone){
+    document.getElementById('setup').style.display='none';
+    document.getElementById('app').style.display='flex';
+    initApp();
+  } else {
+    document.getElementById('setup').style.display='flex';
+    document.getElementById('app').style.display='none';
+  }
+}
+
+function signOut(){
+  if(!confirm('Sign out of Kharcha?')) return;
+  fbAuth.signOut().then(()=>{
+    fbUid = null; S = defData();
+    localStorage.removeItem(SK);
+    document.getElementById('app').style.display='none';
+    document.getElementById('setup').style.display='none';
+    document.getElementById('login').style.display='flex';
   });
 }
 
@@ -1310,34 +1377,18 @@ async function installPWA(){
 // BOOT
 // ═══════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
-  // Sign in anonymously to Firebase for sync
-  fbAuth.signInAnonymously().then(async cred => {
-    fbUid = cred.user.uid;
-    // Try to load from Firebase first
-    const remote = await fbLoad();
-    if(remote && remote.setupDone){
-      S = {...defData(), ...remote};
-      localStorage.setItem(SK, JSON.stringify(S));
-    }
-    fbListen(); // live sync
-    if(S.setupDone){
-      document.getElementById('setup').style.display='none';
-      document.getElementById('app').style.display='flex';
-      initApp();
+  // Hide all screens initially
+  document.getElementById('login').style.display='none';
+  document.getElementById('setup').style.display='none';
+  document.getElementById('app').style.display='none';
+
+  // Check auth state
+  fbAuth.onAuthStateChanged(async user => {
+    if(user){
+      await onSignedIn(user);
     } else {
-      document.getElementById('setup').style.display='flex';
-      document.getElementById('app').style.display='none';
-    }
-  }).catch(err => {
-    console.error('Firebase auth error', err);
-    // Fall back to localStorage only
-    if(S.setupDone){
-      document.getElementById('setup').style.display='none';
-      document.getElementById('app').style.display='flex';
-      initApp();
-    } else {
-      document.getElementById('setup').style.display='flex';
-      document.getElementById('app').style.display='none';
+      // Not signed in - show login
+      document.getElementById('login').style.display='flex';
     }
   });
 });
