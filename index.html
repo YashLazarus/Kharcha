@@ -680,7 +680,7 @@ async function doSetup(){
 // ═══════════════════════════════
 function initApp(){renderHome();renderSettings();autoInsights()}
 function autoInsights(){
-  const today=new Date().toISOString().split('T')[0];
+  const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
   if(S.insightsDate!==today&&S.geminiKey)refreshInsights();
   else if(S.insights)document.getElementById('insight-text').textContent=S.insights;
   else document.getElementById('insight-text').textContent='Log some expenses to get AI insights!';
@@ -726,7 +726,7 @@ ${cats}
 Return: {"description":"...","amount":number,"category":"...","emoji":"...","isRefund":false}
 Rules: amount must be positive. category = concise 1-2 words Title Case. isRefund=true if mentions refund/return/reimbursement.`;
     const raw=await callGemini(prompt);
-    const parsed=JSON.parse(raw.replace(/```json?|```/gi,'').trim());
+    let parsed;try{parsed=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}catch(e){throw new Error('Gemini returned invalid JSON')}
     const{description,amount,category,emoji,isRefund}=parsed;
     if(!amount||isNaN(amount))throw new Error('No amount');
     const isNew=category&&!S.categories.includes(category);
@@ -742,7 +742,7 @@ Rules: amount must be positive. category = concise 1-2 words Title Case. isRefun
 }
 
 function commitTx({description,amount,category,emoji,isRefund}){
-  S.expenses.unshift({id:Date.now().toString(),date:new Date().toISOString().split('T')[0],description:description||'Expense',amount:parseFloat(amount),category:category||'Uncategorized',emoji:emoji||catEmoji(category),isRefund:!!isRefund});
+  S.expenses.unshift({id:Date.now().toString(),date:(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})(),description:description||'Expense',amount:parseFloat(amount),category:category||'Uncategorized',emoji:emoji||catEmoji(category),isRefund:!!isRefund});
   save();renderHome();toast(`Added: ${description} ₹${fmt(amount)}`);
 }
 
@@ -981,7 +981,8 @@ async function aiSuggestSplit(){
     const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
     const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
     const raw=await callGemini(prompt);
-    const sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim());
+    let sug;try{sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}catch(e){throw new Error('Invalid JSON from Gemini')}
+    const _ta=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_ta>0&&_ta!==100){const _sa=100/_ta;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sa)})}
     S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
     updateSplitTotal();toast('Gemini suggested a split!');
   }catch(e){toast('Could not get suggestion');console.error(e)}
@@ -994,7 +995,8 @@ async function aiSuggestAndApprove(){
     const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
     const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
     const raw=await callGemini(prompt);
-    const sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim());
+    let sug;try{sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}catch(e){throw new Error('Invalid JSON from Gemini')}
+    const _tb=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_tb>0&&_tb!==100){const _sb=100/_tb;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sb)})}
     const list=document.getElementById('split-ok-list');
     list.innerHTML=Object.entries(sug).map(([cat,p])=>`<div class="split-item" style="margin-bottom:7px"><div class="split-item-name">${catEmoji(cat)} ${cat}</div><div style="font-family:var(--mono);font-size:15px;color:var(--accent2)">${p}%</div></div>`).join('');
     list.dataset.sug=JSON.stringify(sug);
@@ -1117,7 +1119,7 @@ async function refreshInsights(fromSettings=false){
 Budget: ₹${flexBudget}, Spent: ₹${spent}, By category: ${JSON.stringify(spend)}, Month: ${getMonthLabel(curYear,curMonth)}.
 Be specific, warm, and actionable. Use ₹ symbols. Plain text only, no markdown, under 60 words.`;
     const insight=await callGemini(prompt);
-    S.insights=insight.trim();S.insightsDate=new Date().toISOString().split('T')[0];save();
+    S.insights=insight.trim();S.insightsDate=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();save();
     textEl.textContent=S.insights;
     if(fromSettings){renderSettings();toast('Insights refreshed!')}
   }catch{textEl.textContent='Could not load insights. Check your API key.'}
