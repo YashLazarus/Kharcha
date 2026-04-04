@@ -845,12 +845,11 @@ async function doSetup(){
 // ═══════════════════════════════
 // INIT
 // ═══════════════════════════════
-function initApp(){renderHome();renderSettings();autoInsights()}
-function autoInsights(){
-  const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
-  if(S.insightsDate!==today&&S.geminiKey)refreshInsights();
-  else if(S.insights)document.getElementById('insight-text').textContent=S.insights;
-  else document.getElementById('insight-text').textContent='Log some expenses to get AI insights!';
+function initApp(){renderHome();renderSettings();showCachedInsights()}
+function showCachedInsights(){
+  // Only show cached insights - never auto-call Gemini on startup
+  if(S.insights)document.getElementById('insight-text').textContent=S.insights;
+  else document.getElementById('insight-text').textContent='Tap ↻ to get AI insights!';
 }
 
 // ═══════════════════════════════
