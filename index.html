@@ -1477,7 +1477,7 @@ Be specific, warm, and actionable. Use ₹ symbols. Plain text only, no markdown
     S.insights=insight.trim();S.insightsDate=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();save();
     textEl.textContent=S.insights;
     if(fromSettings){renderSettings();toast('Insights refreshed!')}
-  }catch{textEl.textContent='Could not load insights. Check your API key.'}
+  }catch(e){textEl.textContent='Could not load insights: '+(e.message||'Unknown error');console.error('Insights error:',e)}
   finally{isRefreshingInsights=false;btn?.classList.remove('spinning');if(sbtn){sbtn.disabled=false;sbtn.innerHTML='↻ Refresh'}}
 }
 
