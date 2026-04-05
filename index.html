@@ -829,7 +829,7 @@ function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date+'T12
 // ═══════════════════════════════
 // GEMINI
 // ═══════════════════════════════
-const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 // FIX: daily quota counter
 function trackApiCall(){
   const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
