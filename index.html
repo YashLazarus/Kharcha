@@ -428,6 +428,16 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
               </div>
             </div>
             <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(124,106,247,0.1)">🔍</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Available Models</div>
+                <div class="s-row-sub" id="models-sub">Tap to check which models work with your key</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-ghost btn-sm" onclick="checkModels()">Check</button>
+              </div>
+            </div>
+            <div class="s-row">
               <div class="s-row-icon" style="background:rgba(124,106,247,0.1)">💡</div>
               <div class="s-row-content">
                 <div class="s-row-label">AI Insights</div>
@@ -829,7 +839,7 @@ function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date+'T12
 // ═══════════════════════════════
 // GEMINI
 // ═══════════════════════════════
-const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 // FIX: daily quota counter
 function trackApiCall(){
   const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
@@ -851,6 +861,22 @@ async function callGemini(prompt,key){
   return d.candidates?.[0]?.content?.parts?.[0]?.text||''
 }
 async function validateKey(k){await callGemini('Say OK',k);return true}
+
+async function checkModels(){
+  if(!S.geminiKey){toast('Set API key first');return}
+  const sub=document.getElementById('models-sub');
+  sub.textContent='Checking…';
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${S.geminiKey}`);
+    const d=await r.json();
+    if(d.error){sub.textContent='Error: '+d.error.message;return}
+    const models=d.models
+      .filter(m=>m.supportedGenerationMethods?.includes('generateContent'))
+      .map(m=>m.name.replace('models/',''))
+      .filter(m=>m.includes('flash')||m.includes('pro'));
+    sub.textContent=models.join(', ')||'No models found';
+  }catch(e){sub.textContent='Failed: '+e.message}
+}
 
 // ═══════════════════════════════
 // SETUP
