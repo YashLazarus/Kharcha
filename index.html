@@ -840,6 +840,22 @@ function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date+'T12
 // GEMINI
 // ═══════════════════════════════
 const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+// Robust JSON extractor — handles thinking tokens and extra text from gemini-2.5
+function extractJSON(raw){
+  // Try direct parse first
+  try{return JSON.parse(raw.trim())}catch{}
+  // Strip markdown code blocks
+  const stripped=raw.replace(/```json?|```/gi,'').trim();
+  try{return JSON.parse(stripped)}catch{}
+  // Extract first {...} block
+  const start=stripped.indexOf('{');
+  const end=stripped.lastIndexOf('}');
+  if(start!==-1&&end!==-1&&end>start){
+    try{return JSON.parse(stripped.slice(start,end+1))}catch{}
+  }
+  throw new Error('Could not parse AI response');
+}
+
 // FIX: daily quota counter
 function trackApiCall(){
   const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
@@ -1025,8 +1041,8 @@ Input:"${text}" Categories:${topCats}
       }
     }
     let parsed;
-    try{parsed=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}
-    catch(e){throw new Error('Could not parse response')}
+    try{parsed=extractJSON(raw)}
+    catch(e){throw new Error('Could not parse AI response')}
     const{description,amount,category,emoji,isRefund}=parsed;
     if(!amount||isNaN(amount))throw new Error('No amount found');
     // FIX: cache successful parse
@@ -1358,11 +1374,11 @@ async function aiSuggestSplit(){
     const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
     const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
     const raw=await callGemini(prompt);
-    let sug;try{sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}catch(e){throw new Error('Invalid JSON from Gemini')}
+    let sug;try{sug=extractJSON(raw)}catch(e){throw new Error('Invalid JSON from Gemini')}
     const _ta=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_ta>0&&_ta!==100){const _sa=100/_ta;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sa)})}
     S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
     updateSplitTotal();toast('Gemini suggested a split!');
-  }catch(e){toast('Could not get suggestion');console.error(e)}
+  }catch(e){toast((e.message||'Could not get suggestion').slice(0,150));console.error('Split suggest error:',e)}
   finally{btn.disabled=false;btn.innerHTML='✦ Gemini Suggest'}
 }
 
@@ -1372,7 +1388,7 @@ async function aiSuggestAndApprove(){
     const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
     const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
     const raw=await callGemini(prompt);
-    let sug;try{sug=JSON.parse(raw.replace(/```json?|```/gi,'').trim())}catch(e){throw new Error('Invalid JSON from Gemini')}
+    let sug;try{sug=extractJSON(raw)}catch(e){throw new Error('Invalid JSON from Gemini')}
     const _tb=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_tb>0&&_tb!==100){const _sb=100/_tb;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sb)})}
     const list=document.getElementById('split-ok-list');
     list.innerHTML=Object.entries(sug).map(([cat,p])=>`<div class="split-item" style="margin-bottom:7px"><div class="split-item-name">${catEmoji(cat)} ${cat}</div><div style="font-family:var(--mono);font-size:15px;color:var(--accent2)">${p}%</div></div>`).join('');
