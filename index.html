@@ -1385,19 +1385,11 @@ async function aiSuggestSplit(){
     const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
     const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
     const raw=await callGemini(prompt);
-    console.log('RAW GEMINI RESPONSE:',raw);
-    let sug;
-    try{sug=extractJSON(raw)}
-    catch(e){
-      // Show first 200 chars of raw response so we can debug
-      toast('Raw: '+raw.slice(0,200));
-      console.error('Full raw:',raw);
-      throw new Error('Invalid JSON from Gemini');
-    }
+    let sug;try{sug=extractJSON(raw)}catch(e){throw new Error('Invalid JSON from Gemini')}
     const _ta=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_ta>0&&_ta!==100){const _sa=100/_ta;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sa)})}
     S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
     updateSplitTotal();toast('Gemini suggested a split!');
-  }catch(e){if(!e.message.startsWith('Raw:'))toast((e.message||'Could not get suggestion').slice(0,200));console.error('Split suggest error:',e)}
+  }catch(e){toast((e.message||'Could not get suggestion').slice(0,150));console.error('Split suggest error:',e)}
   finally{btn.disabled=false;btn.innerHTML='✦ Gemini Suggest'}
 }
 
