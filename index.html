@@ -814,6 +814,7 @@ function signOut(){
 // ═══════════════════════════════
 function load(){try{const r=localStorage.getItem(SK);return r?{...defData(),...JSON.parse(r)}:defData()}catch{return defData()}}
 function save(){
+  S.lastUpdated = Date.now(); // keep in-memory state fresh
   localStorage.setItem(SK,JSON.stringify(S));
   fbSave(S); // sync to Firebase
 }
@@ -842,18 +843,21 @@ function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date+'T12
 const GURL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 // Robust JSON extractor — handles thinking tokens and extra text from gemini-2.5
 function extractJSON(raw){
-  // Try direct parse first
-  try{return JSON.parse(raw.trim())}catch{}
+  // Strip thinking/reasoning tags (gemini-2.5-flash adds these)
+  let cleaned=raw.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
   // Strip markdown code blocks
-  const stripped=raw.replace(/```json?|```/gi,'').trim();
-  try{return JSON.parse(stripped)}catch{}
+  cleaned=cleaned.replace(/```json?|```/gi,'').trim();
+  // Try direct parse
+  try{return JSON.parse(cleaned)}catch{}
   // Extract first {...} block
-  const start=stripped.indexOf('{');
-  const end=stripped.lastIndexOf('}');
+  const start=cleaned.indexOf('{');
+  const end=cleaned.lastIndexOf('}');
   if(start!==-1&&end!==-1&&end>start){
-    try{return JSON.parse(stripped.slice(start,end+1))}catch{}
+    try{return JSON.parse(cleaned.slice(start,end+1))}catch{}
   }
-  throw new Error('Could not parse AI response');
+  // Log what we got for debugging
+  console.error('extractJSON failed on:',raw.slice(0,300));
+  throw new Error('Invalid JSON from Gemini');
 }
 
 // FIX: daily quota counter
@@ -863,7 +867,7 @@ function trackApiCall(){
   if(stored.date!==today)stored.calls=0;
   stored.date=today;stored.calls=(stored.calls||0)+1;
   localStorage.setItem('kharcha_quota',JSON.stringify(stored));
-  if(stored.calls>=1400)toast(`⚠️ API usage: ${stored.calls}/1500 today`);
+  if(stored.calls>=450)toast(`⚠️ API usage: ${stored.calls}/500 today — nearing daily limit`);
   return stored.calls;
 }
 
@@ -1118,8 +1122,9 @@ function confirmNewCat(action){
   if(merge){
     if(pendingTx){pendingTx.category=normCat(merge);commitTx(pendingTx);pendingTx=null}
   }else if(renamed&&renamed!==pendingCat){
-    addCat(renamed);
-    if(pendingTx){pendingTx.category=renamed;commitTx(pendingTx);pendingTx=null}
+    const renamedNorm=normCat(renamed);
+    addCat(renamedNorm);
+    if(pendingTx){pendingTx.category=renamedNorm;commitTx(pendingTx);pendingTx=null}
   }else{
     addCat(pendingCat);
     if(pendingTx){commitTx(pendingTx);pendingTx=null}
@@ -1301,8 +1306,14 @@ function importData(input){
       if(!confirm(`Import backup? This will replace all current data.\n\n${data.expenses?.length||0} expenses, budget ₹${data.budget}`))return;
       S={...defData(),...data};
       localStorage.setItem(SK,JSON.stringify(S));
-      fbSave(S).then(()=>{toast('Data restored & synced ✓');setTimeout(()=>location.reload(),1000);});
       toast('Restoring…');
+      fbSave(S).then(()=>{
+        toast('Data restored & synced ✓');
+        setTimeout(()=>location.reload(),1000);
+      }).catch(()=>{
+        toast('Restored locally — sync failed, will retry');
+        setTimeout(()=>location.reload(),1000);
+      });
     }catch(err){
       toast('Invalid backup file');
     }
@@ -1435,7 +1446,7 @@ function confirmRename(){
   const n=document.getElementById('rename-inp').value.trim();
   if(!n||n===renamingCat){closeModal('modal-rename');return}
   if(S.categories.includes(n)){toast('Category already exists');return}
-  const i=S.categories.indexOf(renamingCat);S.categories[i]=n;
+  const i=S.categories.indexOf(renamingCat);if(i===-1){closeModal('modal-rename');return;}S.categories[i]=n;
   S.expenses.forEach(e=>{if(e.category===renamingCat)e.category=n});
   if(S.budgetSplit[renamingCat]!==undefined){S.budgetSplit[n]=S.budgetSplit[renamingCat];delete S.budgetSplit[renamingCat]}
   clearParseCache();save();closeModal('modal-rename');renderCatsPage();renderHome();toast(`Renamed to ${n}`)
@@ -1512,9 +1523,9 @@ async function refreshInsights(fromSettings=false){
     const flexBudget=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
     const spent=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0);
     const spend={};txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
-    const prompt=`You are a friendly financial advisor for an Indian user. Give a brief 2-3 sentence insight about their spending this month.
-Budget: ₹${flexBudget}, Spent: ₹${spent}, By category: ${JSON.stringify(spend)}, Month: ${getMonthLabel(curYear,curMonth)}.
-Be specific, warm, and actionable. Use ₹ symbols. Plain text only, no markdown, under 60 words.`;
+    const topSpend=Object.entries(spend).sort((a,b)=>b[1]-a[1]).slice(0,5).reduce((o,[k,v])=>{o[k]=v;return o},{});
+    const prompt=`Indian finance advisor. 2 sentences max, specific, use ₹, no markdown.
+Budget:₹${flexBudget} Spent:₹${spent} Top:${JSON.stringify(topSpend)} Month:${getMonthLabel(curYear,curMonth)}`;
     const insight=await callGemini(prompt);
     S.insights=insight.trim();S.insightsDate=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();save();
     textEl.textContent=S.insights;
