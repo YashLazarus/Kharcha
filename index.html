@@ -787,10 +787,10 @@ async function signInWithGoogle(){
   }
 }
 
-let isSigningIn = false;
+let authHandled = false;
 async function onSignedIn(user){
-  if(isSigningIn) return; // prevent double call
-  isSigningIn = true;
+  if(authHandled) return;
+  authHandled = true;
   try{
     fbUid = user.uid;
     const sub = document.getElementById('user-email-sub');
@@ -810,8 +810,12 @@ async function onSignedIn(user){
       document.getElementById('setup').style.display='flex';
       document.getElementById('app').style.display='none';
     }
-  } finally {
-    isSigningIn = false;
+  } catch(e){
+    console.error('onSignedIn error:',e);
+    // Reset so user can try again
+    authHandled = false;
+    fbUid = null;
+    document.getElementById('login').style.display='flex';
   }
 }
 
@@ -823,6 +827,7 @@ function signOut(){
     fbListener = null;
   }
   fbAuth.signOut().then(()=>{
+    authHandled = false;
     fbUid = null; S = defData();
     localStorage.removeItem(SK);
     document.getElementById('app').style.display='none';
@@ -1732,13 +1737,18 @@ window.addEventListener('DOMContentLoaded',async ()=>{
     }
   } catch(e){ console.error('Redirect result error:',e); }
 
-  // Check auth state
+  // Check auth state — Firebase fires this immediately on load
+  let authResolved = false;
   fbAuth.onAuthStateChanged(async user => {
     if(user){
       await onSignedIn(user);
     } else {
-      document.getElementById('login').style.display='flex';
+      // Only show login if not already handled by popup/redirect
+      if(!authHandled){
+        document.getElementById('login').style.display='flex';
+      }
     }
+    authResolved = true;
   });
 });
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/Kharcha/sw.js').catch(()=>{});
