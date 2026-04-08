@@ -564,6 +564,18 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </div>
     </div>
 
+    <!-- GOALS PAGE -->
+    <div class="page" id="page-goals">
+      <div class="page-hdr">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="page-hdr-title">Goals</div>
+          <button class="btn btn-primary btn-sm" onclick="openAddGoalModal()" style="margin-top:0;width:auto">+ New Goal</button>
+        </div>
+        <div class="page-hdr-sub" id="goals-sub">Track your savings goals</div>
+      </div>
+      <div id="goals-content" style="padding:0 16px 16px"></div>
+    </div>
+
     <!-- TRENDS PAGE -->
     <div class="page" id="page-trends">
       <div class="page-hdr">
@@ -583,6 +595,10 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div class="tab-item" id="tab-trends" onclick="switchTab('trends')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       <div class="tab-label">Trends</div>
+    </div>
+    <div class="tab-item" id="tab-goals" onclick="switchTab('goals')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      <div class="tab-label">Goals</div>
     </div>
     <div class="tab-item" id="tab-settings" onclick="switchTab('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -687,6 +703,50 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   </div>
 </div>
 
+<!-- Add Goal Modal -->
+<div class="modal-overlay" id="modal-add-goal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="goal-modal-title">New Goal</div>
+    <div class="modal-field"><label>Goal Name</label><input type="text" id="goal-name" placeholder="Goa Trip, iPhone 16, Emergency Fund…"></div>
+    <div class="modal-field"><label>Target Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="goal-target" placeholder="25000"></div></div>
+    <div class="modal-field"><label>Monthly Commitment (₹) — optional</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="goal-commit" placeholder="2000"></div><span style="font-size:11px;color:var(--text3);margin-top:5px;display:block">Deducted from your flexible budget each month</span></div>
+    <div class="modal-field"><label>Deadline — optional</label><input type="month" id="goal-deadline" style="color:var(--text)"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="goal-delete-btn" onclick="deleteGoal()" style="display:none">Delete</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-goal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGoal()">Save Goal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Contribute to Goal Modal -->
+<div class="modal-overlay" id="modal-contribute">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Add to <span id="contrib-goal-name" style="color:var(--accent2)"></span></div>
+    <div class="modal-field"><label>Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="contrib-amount" placeholder="500"></div></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-contribute')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmContribute()">Add Money</button>
+    </div>
+  </div>
+</div>
+
+<!-- Month End Sweep Modal -->
+<div class="modal-overlay" id="modal-sweep">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Month-end Savings 🎉</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">You were under budget last month! What would you like to do with <strong id="sweep-amount" style="color:var(--green)"></strong>?</p>
+    <div id="sweep-goal-list" style="margin-bottom:16px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="sweepToSavings()">Keep as Savings</button>
+      <button class="btn btn-primary" onclick="confirmSweep()">Allocate to Goals</button>
+    </div>
+  </div>
+</div>
+
 <!-- Split Approval -->
 <div class="modal-overlay" id="modal-split-ok">
   <div class="modal">
@@ -708,7 +768,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // DATA
 // ═══════════════════════════════
 const SK = 'kharcha_v1';
-function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0}}
+function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[]}}
 // ═══════════════════════════════
 // FIREBASE
 // ═══════════════════════════════
@@ -951,7 +1011,7 @@ async function doSetup(){
 // ═══════════════════════════════
 // INIT
 // ═══════════════════════════════
-function initApp(){renderHome();renderSettings();showCachedInsights()}
+function initApp(){renderHome();renderSettings();showCachedInsights();setTimeout(checkMonthEndSweep,1000)}
 function showCachedInsights(){
   // Only show cached insights - never auto-call Gemini on startup
   if(S.insights)document.getElementById('insight-text').textContent=S.insights;
@@ -968,6 +1028,7 @@ function switchTab(t){
   document.getElementById(`tab-${t}`).classList.add('active');
   document.querySelector('.app-content').scrollTop=0;
   if(t==='trends') renderTrends();
+  if(t==='goals') renderGoals();
 }
 function openSubPage(id){
   if(id==='sp-split')renderSplitPage();
@@ -1167,7 +1228,8 @@ function renderHome(){
   document.getElementById('month-label').textContent=getMonthLabel(curYear,curMonth);
   const txs=getMonthTxs();
   const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
-  const flexBudget=Math.max(0,S.budget-fixedTotal);
+  const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
   const spentRaw=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
   const spent=Math.max(0,spentRaw);
   const pct=flexBudget>0?Math.min(spent/flexBudget*100,100):0;
@@ -1620,7 +1682,8 @@ function renderTrends(){
   const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
   const dayOfMonth=now.getDate();
   const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
-  const flexBudget=Math.max(0,S.budget-fixedTotal);
+  const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
 
   // Month transactions
   const monthTxs=getMonthTxs();
@@ -1696,6 +1759,37 @@ function renderTrends(){
       </div>
     </div>
 
+    <!-- Goals Card -->
+    ${(S.goals||[]).length>0?`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:12px">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3)">Goals</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text2)">₹${fmt(goalCommits)}/mo committed</span>
+      </div>
+      ${(S.goals||[]).map(g=>{
+        const pct=g.target>0?Math.min(100,Math.round((g.saved/g.target)*100)):0;
+        const remaining=Math.max(0,g.target-g.saved);
+        const monthsLeft=g.monthly>0?Math.ceil(remaining/g.monthly):null;
+        return`<div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:500">${g.name}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text2)">${pct}%</span>
+          </div>
+          <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:5px">
+            <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--yellow)'};border-radius:3px;transition:width .6s"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3)">
+            <span>₹${fmt(g.saved)} saved</span>
+            <span>${monthsLeft?monthsLeft+' months left':'₹'+fmt(remaining)+' to go'}</span>
+          </div>
+        </div>`;
+      }).join('')}
+      ${S.savings>0?`<div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;color:var(--text2)">💰 Savings</span>
+        <span style="font-family:var(--mono);font-size:13px;color:var(--green)">₹${fmt(S.savings)}</span>
+      </div>`:''}
+    </div>`:''}
+
     <!-- Today -->
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:12px">
       <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
@@ -1716,6 +1810,229 @@ function renderTrends(){
           </div>
         </div>`).join('')}
     </div>`;
+}
+
+// ═══════════════════════════════
+// GOALS
+// ═══════════════════════════════
+let editingGoalId = null;
+let contributingGoalId = null;
+let sweepGoalAllocations = {};
+
+function renderGoals(){
+  const el = document.getElementById('goals-content');
+  const goals = S.goals || [];
+  const totalCommitted = goals.reduce((s,g)=>s+(g.monthly||0),0);
+  const totalSaved = goals.reduce((s,g)=>s+(g.saved||0),0);
+
+  if(!goals.length && !S.savings){
+    el.innerHTML=`<div style="text-align:center;padding:48px 20px">
+      <div style="font-size:48px;margin-bottom:16px">🎯</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px">No goals yet</div>
+      <div style="font-size:13px;color:var(--text3);line-height:1.6;margin-bottom:24px">Set a goal — a trip, a gadget, an emergency fund.<br>The app tracks your progress automatically.</div>
+      <button class="btn btn-primary" onclick="openAddGoalModal()" style="width:auto;padding:12px 24px">+ Create your first goal</button>
+    </div>`;
+    return;
+  }
+
+  // Summary card
+  let html = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:13px;color:var(--text2)">Total saved across goals</span>
+      <span style="font-family:var(--mono);font-size:15px;font-weight:500;color:var(--green)">₹${fmt(totalSaved)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <span style="font-size:13px;color:var(--text2)">Monthly committed</span>
+      <span style="font-family:var(--mono);font-size:13px;color:var(--accent2)">₹${fmt(totalCommitted)}/mo</span>
+    </div>
+    ${S.savings>0?`<div style="display:flex;justify-content:space-between;margin-top:4px;padding-top:8px;border-top:1px solid var(--border)">
+      <span style="font-size:13px;color:var(--text2)">💰 Unallocated savings</span>
+      <span style="font-family:var(--mono);font-size:13px;color:var(--green)">₹${fmt(S.savings)}</span>
+    </div>`:''}
+  </div>`;
+
+  // Goal cards
+  goals.forEach(g=>{
+    const pct = g.target>0?Math.min(100,Math.round((g.saved/g.target)*100)):0;
+    const remaining = Math.max(0,g.target-g.saved);
+    const monthsLeft = g.monthly>0?Math.ceil(remaining/g.monthly):null;
+    const color = pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--yellow)';
+    const deadlineStr = g.deadline?` · Due ${g.deadline}`:'';
+
+    html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-size:15px;font-weight:600">${g.name}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${g.monthly?'₹'+fmt(g.monthly)+'/mo committed':'No monthly commitment'}${deadlineStr}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-xs" onclick="openEditGoalModal('${g.id}')">Edit</button>
+          <button class="btn btn-primary btn-xs" onclick="openContributeModal('${g.id}')" style="margin-top:0">+ Add</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-family:var(--mono);font-size:13px">₹${fmt(g.saved)} <span style="color:var(--text3)">/ ₹${fmt(g.target)}</span></span>
+        <span style="font-size:12px;font-weight:700;color:${color}">${pct}%</span>
+      </div>
+      <div style="height:8px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:8px">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .8s cubic-bezier(.4,0,.2,1)"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3)">
+        ${pct>=100?'🎉 Goal reached!'
+          :monthsLeft?`₹${fmt(remaining)} to go · ~${monthsLeft} month${monthsLeft!==1?'s':''} at current pace`
+          :`₹${fmt(remaining)} remaining`}
+      </div>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function openAddGoalModal(){
+  editingGoalId = null;
+  document.getElementById('goal-modal-title').textContent = 'New Goal';
+  document.getElementById('goal-name').value = '';
+  document.getElementById('goal-target').value = '';
+  document.getElementById('goal-commit').value = '';
+  document.getElementById('goal-deadline').value = '';
+  document.getElementById('goal-delete-btn').style.display='none';
+  openModal('modal-add-goal');
+}
+
+function openEditGoalModal(id){
+  const g = (S.goals||[]).find(g=>g.id===id);
+  if(!g) return;
+  editingGoalId = id;
+  document.getElementById('goal-modal-title').textContent = 'Edit Goal';
+  document.getElementById('goal-name').value = g.name;
+  document.getElementById('goal-target').value = g.target;
+  document.getElementById('goal-commit').value = g.monthly||'';
+  document.getElementById('goal-deadline').value = g.deadline||'';
+  document.getElementById('goal-delete-btn').style.display='block';
+  openModal('modal-add-goal');
+}
+
+function saveGoal(){
+  const name = document.getElementById('goal-name').value.trim();
+  const target = parseFloat(document.getElementById('goal-target').value)||0;
+  const monthly = parseFloat(document.getElementById('goal-commit').value)||0;
+  const deadline = document.getElementById('goal-deadline').value||'';
+  if(!name){toast('Enter a goal name');return}
+  if(!target){toast('Enter a target amount');return}
+  if(editingGoalId){
+    const existing=(S.goals||[]).find(g=>g.id===editingGoalId);
+    if(existing&&target<existing.saved){toast(`Target can't be less than amount already saved (₹${fmt(existing.saved)})`);return}
+  }
+  if(editingGoalId){
+    S.goals = (S.goals||[]).map(g=>g.id===editingGoalId?{...g,name,target,monthly,deadline}:g);
+    toast('Goal updated!');
+  } else {
+    if(!S.goals) S.goals = [];
+    S.goals.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name,target,monthly,deadline,saved:0,createdAt:(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`})()});
+    toast('Goal created!');
+  }
+  save();closeModal('modal-add-goal');renderGoals();renderHome();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+}
+
+function deleteGoal(){
+  if(!editingGoalId) return;
+  const g = (S.goals||[]).find(g=>g.id===editingGoalId);
+  if(!g) return;
+  if(!confirm(`Delete "${g.name}"? Progress will be lost.`)) return;
+  S.goals = S.goals.filter(g=>g.id!==editingGoalId);
+  save();closeModal('modal-add-goal');renderGoals();renderHome();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  toast('Goal deleted');
+}
+
+function openContributeModal(id){
+  const g = (S.goals||[]).find(g=>g.id===id);
+  if(!g) return;
+  contributingGoalId = id;
+  document.getElementById('contrib-goal-name').textContent = g.name;
+  document.getElementById('contrib-amount').value = '';
+  openModal('modal-contribute');
+}
+
+function confirmContribute(){
+  const amt = parseFloat(document.getElementById('contrib-amount').value)||0;
+  if(!amt){toast('Enter an amount');return}
+  const existing = (S.goals||[]).find(g=>g.id===contributingGoalId);
+  if(existing && existing.saved>=existing.target){toast('Goal already reached! 🎉');return}
+  S.goals = (S.goals||[]).map(g=>g.id===contributingGoalId?{...g,saved:(g.saved||0)+amt}:g);
+  save();closeModal('modal-contribute');renderGoals();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  const g = S.goals.find(g=>g.id===contributingGoalId);
+  if(g && g.saved>=g.target) toast('🎉 Goal reached! Congratulations!');
+  else toast(`Added ₹${fmt(amt)} to goal!`);
+}
+
+function checkMonthEndSweep(){
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  if(now.getDate() !== 1) return; // only on 1st of month
+  const prevKey = `sweep_${now.getFullYear()}_${now.getMonth()}`;
+  if((S.sweepHistory||[]).includes(prevKey)) return; // already prompted
+  // Calculate last month's underspend
+  const prevMonth = now.getMonth()===0?11:now.getMonth()-1;
+  const prevYear = now.getMonth()===0?now.getFullYear()-1:now.getFullYear();
+  const prevMK = `${prevYear}-${String(prevMonth+1).padStart(2,'0')}`;
+  const prevTxs = S.expenses.filter(e=>e.date.startsWith(prevMK));
+  const prevSpent = Math.max(0,prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+  const prevFixed = S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
+  const prevCommits = (S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const prevFlex = Math.max(0,S.budget-prevFixed-prevCommits);
+  const saved = prevFlex - prevSpent;
+  if(saved <= 0) return; // nothing to sweep
+  if(!S.sweepHistory) S.sweepHistory=[];
+  S.sweepHistory.push(prevKey);
+  save();
+  // Show sweep modal
+  document.getElementById('sweep-amount').textContent = '₹'+fmt(Math.round(saved));
+  const goals = (S.goals||[]).filter(g=>g.saved<g.target);
+  const list = document.getElementById('sweep-goal-list');
+  if(goals.length){
+    list.innerHTML = goals.map(g=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1"><div style="font-size:13px">${g.name}</div><div style="font-size:11px;color:var(--text3)">₹${fmt(g.saved)} / ₹${fmt(g.target)}</div></div>
+      <div class="input-pfx-wrap" style="width:100px"><span class="input-pfx">₹</span><input type="number" class="inp" data-gid="${g.id}" placeholder="0" style="padding:8px 8px 8px 22px;font-size:13px"></div>
+    </div>`).join('');
+    // Store sweep amount for use in confirmSweep
+    list.dataset.swept = Math.round(saved);
+  } else {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text3)">No active goals to allocate to.</div>';
+    list.dataset.swept = Math.round(saved);
+  }
+  setTimeout(()=>openModal('modal-sweep'), 500);
+}
+
+function confirmSweep(){
+  const list = document.getElementById('sweep-goal-list');
+  const inputs = list.querySelectorAll('input[data-gid]');
+  let totalAllocated = 0;
+  inputs.forEach(inp=>{
+    const amt = parseFloat(inp.value)||0;
+    if(amt>0){
+      S.goals = (S.goals||[]).map(g=>g.id===inp.dataset.gid?{...g,saved:(g.saved||0)+amt}:g);
+      totalAllocated+=amt;
+    }
+  });
+  const swept = parseFloat(list.dataset.swept)||0;
+  if(totalAllocated > swept){toast(`Total cannot exceed ₹${fmt(swept)}`);return}
+  const leftover = swept - totalAllocated;
+  if(leftover>0) S.savings = (S.savings||0)+leftover;
+  save();closeModal('modal-sweep');renderGoals();renderHome();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  toast(`₹${fmt(Math.round(swept))} allocated!`);
+}
+
+function sweepToSavings(){
+  const list = document.getElementById('sweep-goal-list');
+  const swept = parseFloat(list.dataset.swept)||0;
+  if(swept>0){ S.savings=(S.savings||0)+swept; save(); toast(`₹${fmt(Math.round(swept))} added to savings!`); }
+  closeModal('modal-sweep');renderGoals();renderHome();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
 }
 
 // ═══════════════════════════════
