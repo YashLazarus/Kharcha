@@ -773,14 +773,9 @@ async function signInWithGoogle(){
   const provider = new firebase.auth.GoogleAuthProvider();
   const errEl = document.getElementById('login-error');
   errEl.style.display='none';
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
   try{
-    if(isStandalone){
-      await fbAuth.signInWithRedirect(provider);
-    } else {
-      const result = await fbAuth.signInWithPopup(provider);
-      await onSignedIn(result.user);
-    }
+    const result = await fbAuth.signInWithPopup(provider);
+    await onSignedIn(result.user);
   } catch(e){
     errEl.textContent = e.message||'Sign in failed. Try again.';
     errEl.style.display='block';
@@ -1722,33 +1717,20 @@ function renderTrends(){
 // ═══════════════════════════════
 // BOOT
 // ═══════════════════════════════
-window.addEventListener('DOMContentLoaded',async ()=>{
-  // Hide all screens initially
+window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('login').style.display='none';
   document.getElementById('setup').style.display='none';
   document.getElementById('app').style.display='none';
 
-  // Handle redirect result first (for standalone PWA sign-in)
-  try{
-    const result = await fbAuth.getRedirectResult();
-    if(result && result.user){
-      await onSignedIn(result.user);
-      return;
-    }
-  } catch(e){ console.error('Redirect result error:',e); }
-
-  // Check auth state — Firebase fires this immediately on load
-  let authResolved = false;
+  // onAuthStateChanged handles auto-login when user already signed in
   fbAuth.onAuthStateChanged(async user => {
     if(user){
       await onSignedIn(user);
     } else {
-      // Only show login if not already handled by popup/redirect
       if(!authHandled){
         document.getElementById('login').style.display='flex';
       }
     }
-    authResolved = true;
   });
 });
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/Kharcha/sw.js').catch(()=>{});
