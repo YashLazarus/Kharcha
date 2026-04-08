@@ -777,7 +777,11 @@ async function signInWithGoogle(){
     const result = await fbAuth.signInWithPopup(provider);
     await onSignedIn(result.user);
   } catch(e){
-    errEl.textContent = e.message||'Sign in failed. Try again.';
+    if(e.code==='auth/popup-blocked'||e.code==='auth/cancelled-popup-request'){
+      errEl.textContent = 'Popup blocked — tap the button again to sign in.';
+    } else {
+      errEl.textContent = e.message||'Sign in failed. Try again.';
+    }
     errEl.style.display='block';
   }
 }
