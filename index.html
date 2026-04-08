@@ -563,7 +563,6 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
       </div>
     </div>
-  </div>
 
     <!-- TRENDS PAGE -->
     <div class="page" id="page-trends">
@@ -574,6 +573,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div id="trends-content" style="padding:0 16px 16px"></div>
     </div>
 
+  </div>
   <!-- Tab Bar -->
   <div class="tab-bar">
     <div class="tab-item active" id="tab-home" onclick="switchTab('home')">
@@ -787,27 +787,31 @@ async function signInWithGoogle(){
   }
 }
 
+let isSigningIn = false;
 async function onSignedIn(user){
-  fbUid = user.uid;
-  // Update UI with user info
-  const sub = document.getElementById('user-email-sub');
-  if(sub) sub.textContent = user.email || user.displayName || 'Signed in';
-  // Load data from Firebase
-  const remote = await fbLoad();
-  if(remote && remote.setupDone){
-    S = {...defData(), ...remote};
-    localStorage.setItem(SK, JSON.stringify(S));
-  }
-  fbListen();
-  // Show correct screen
-  document.getElementById('login').style.display='none';
-  if(S.setupDone){
-    document.getElementById('setup').style.display='none';
-    document.getElementById('app').style.display='flex';
-    initApp();
-  } else {
-    document.getElementById('setup').style.display='flex';
-    document.getElementById('app').style.display='none';
+  if(isSigningIn) return; // prevent double call
+  isSigningIn = true;
+  try{
+    fbUid = user.uid;
+    const sub = document.getElementById('user-email-sub');
+    if(sub) sub.textContent = user.email || user.displayName || 'Signed in';
+    const remote = await fbLoad();
+    if(remote && remote.setupDone){
+      S = {...defData(), ...remote};
+      localStorage.setItem(SK, JSON.stringify(S));
+    }
+    fbListen();
+    document.getElementById('login').style.display='none';
+    if(S.setupDone){
+      document.getElementById('setup').style.display='none';
+      document.getElementById('app').style.display='flex';
+      initApp();
+    } else {
+      document.getElementById('setup').style.display='flex';
+      document.getElementById('app').style.display='none';
+    }
+  } finally {
+    isSigningIn = false;
   }
 }
 
