@@ -565,11 +565,24 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     </div>
   </div>
 
+    <!-- TRENDS PAGE -->
+    <div class="page" id="page-trends">
+      <div class="page-hdr">
+        <div class="page-hdr-title">Trends</div>
+        <div class="page-hdr-sub" id="trends-sub">Daily spending tracker</div>
+      </div>
+      <div id="trends-content" style="padding:0 16px 16px"></div>
+    </div>
+
   <!-- Tab Bar -->
   <div class="tab-bar">
     <div class="tab-item active" id="tab-home" onclick="switchTab('home')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       <div class="tab-label">Home</div>
+    </div>
+    <div class="tab-item" id="tab-trends" onclick="switchTab('trends')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <div class="tab-label">Trends</div>
     </div>
     <div class="tab-item" id="tab-settings" onclick="switchTab('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -760,9 +773,16 @@ async function signInWithGoogle(){
   const provider = new firebase.auth.GoogleAuthProvider();
   const errEl = document.getElementById('login-error');
   errEl.style.display='none';
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
   try{
-    const result = await fbAuth.signInWithPopup(provider);
-    await onSignedIn(result.user);
+    if(isStandalone){
+      await fbAuth.signInWithRedirect(provider);
+      // onAuthStateChanged handles result after redirect
+    } else {
+      // Use popup — onAuthStateChanged will fire and handle everything
+      // Do NOT call onSignedIn here to avoid double login
+      await fbAuth.signInWithPopup(provider);
+    }
   } catch(e){
     errEl.textContent = e.message||'Sign in failed. Try again.';
     errEl.style.display='block';
@@ -941,6 +961,7 @@ function switchTab(t){
   document.getElementById(`page-${t}`).classList.add('active');
   document.getElementById(`tab-${t}`).classList.add('active');
   document.querySelector('.app-content').scrollTop=0;
+  if(t==='trends') renderTrends();
 }
 function openSubPage(id){
   if(id==='sp-split')renderSplitPage();
@@ -1500,9 +1521,9 @@ function saveTx(){
   tx.category=document.getElementById('tx-e-cat').value;
   tx.date=document.getElementById('tx-e-date').value;
   tx.isRefund=editTxRefund;tx.emoji=catEmoji(tx.category);
-  save();closeModal('modal-tx');renderHome();toast('Transaction updated');
+  save();closeModal('modal-tx');renderHome();if(document.getElementById('page-trends').classList.contains('active'))renderTrends();toast('Transaction updated');
 }
-function deleteTx(){if(!confirm('Delete this transaction?'))return;S.expenses=S.expenses.filter(e=>e.id!==editTxId);save();closeModal('modal-tx');renderHome();toast('Deleted')}
+function deleteTx(){if(!confirm('Delete this transaction?'))return;S.expenses=S.expenses.filter(e=>e.id!==editTxId);save();closeModal('modal-tx');renderHome();if(document.getElementById('page-trends').classList.contains('active'))renderTrends();toast('Deleted')}
 
 // ═══════════════════════════════
 // INSIGHTS
@@ -1585,20 +1606,135 @@ async function installPWA(){
 }
 
 // ═══════════════════════════════
+// TRENDS
+// ═══════════════════════════════
+function renderTrends(){
+  const el=document.getElementById('trends-content');
+  const now=new Date();
+  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const dayOfMonth=now.getDate();
+  const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
+  const flexBudget=Math.max(0,S.budget-fixedTotal);
+
+  // Month transactions
+  const monthTxs=getMonthTxs();
+  const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+
+  // Pace calculation
+  const expectedByNow=(dayOfMonth/daysInMonth)*flexBudget;
+  const gap=expectedByNow-monthSpent;
+  const projectedEnd=flexBudget>0?(monthSpent/dayOfMonth)*daysInMonth:0;
+  const isAhead=gap>0;
+  const paceActualPct=flexBudget>0?Math.min(100,(monthSpent/flexBudget)*100):0;
+  const paceExpPct=Math.min(100,(dayOfMonth/daysInMonth)*100);
+  const paceColor=isAhead?'var(--green)':'var(--red)';
+  const paceStatus=isAhead?`₹${fmt(Math.abs(gap))} ahead`:`₹${fmt(Math.abs(gap))} behind`;
+
+  // Last 7 days
+  const last7=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(now);d.setDate(now.getDate()-i);
+    const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dayTxs=S.expenses.filter(e=>e.date===ds);
+    const daySpent=Math.max(0,dayTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-dayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+    const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    last7.push({date:ds,label:i===0?'Today':dayNames[d.getDay()],amt:daySpent,isToday:i===0});
+  }
+  const maxAmt=Math.max(...last7.map(d=>d.amt),1);
+  const avgAmt=last7.reduce((s,d)=>s+d.amt,0)/7;
+
+  // Today's transactions
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todayTxs=S.expenses.filter(e=>e.date===todayStr).sort((a,b)=>b.id.localeCompare(a.id));
+  const todaySpent=Math.max(0,todayTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-todayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+
+  el.innerHTML=`
+    <!-- Pace Card -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3)">Monthly Pace</span>
+        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${isAhead?'rgba(46,204,136,0.15)':'rgba(255,79,106,0.15)'};color:${paceColor}">${paceStatus}</span>
+      </div>
+      <div style="position:relative;margin-bottom:8px">
+        <div style="height:10px;background:var(--bg4);border-radius:6px;overflow:hidden;position:relative">
+          <div style="position:absolute;top:0;left:0;height:100%;width:${paceExpPct}%;background:rgba(255,255,255,0.08);border-right:2px dashed rgba(255,255,255,0.2);border-radius:6px"></div>
+          <div style="position:absolute;top:0;left:0;height:100%;width:${paceActualPct}%;background:linear-gradient(90deg,${paceColor},${paceColor}99);border-radius:6px;transition:width 1s"></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:10px">
+        <span>₹0</span><span style="color:rgba(255,255,255,0.2)">Day ${dayOfMonth} of ${daysInMonth}</span><span>₹${fmt(flexBudget)}</span>
+      </div>
+      <div style="text-align:center;font-size:12px;font-weight:600;color:${projectedEnd<=flexBudget?'var(--green)':'var(--red)'}">
+        At this pace → ₹${fmt(Math.round(projectedEnd))} by month end ${projectedEnd<=flexBudget?'✓':'⚠️'}
+      </div>
+    </div>
+
+    <!-- 7-Day Chart -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3)">Last 7 Days</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text2)">avg ₹${fmt(Math.round(avgAmt))}/day</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:100px;position:relative;padding-bottom:20px">
+        <div style="position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,0.1);bottom:${20+(avgAmt/maxAmt*80)}px;pointer-events:none"></div>
+        ${last7.map(d=>{
+          const barH=d.amt>0?Math.max(4,(d.amt/maxAmt)*80):3;
+          const col=d.isToday?'var(--accent)':d.amt>avgAmt*1.5?'var(--red)':d.amt>avgAmt?'var(--yellow)':'var(--green)';
+          const opacity=d.amt===0?0.25:1;
+          return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative">
+            ${d.amt>0?`<span style="font-family:var(--mono);font-size:9px;color:var(--text2);position:absolute;bottom:${barH+22}px;white-space:nowrap">₹${d.amt>=1000?(d.amt/1000).toFixed(1)+'k':d.amt}</span>`:''}
+            <div style="width:100%;height:${barH}px;background:${col};border-radius:4px 4px 0 0;opacity:${opacity};${d.isToday?'box-shadow:0 0 10px rgba(124,106,247,0.4)':''}"></div>
+            <span style="position:absolute;bottom:0;font-size:9px;color:${d.isToday?'var(--accent2)':'var(--text3)'};font-weight:${d.isToday?700:400};white-space:nowrap">${d.label}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Today -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:12px">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3)">Today · ${todayStr.slice(8)} ${new Date(todayStr+'T12:00:00').toLocaleString('default',{month:'short'})}</span>
+        <span style="font-family:var(--mono);font-size:14px">${todaySpent>0?'-₹'+fmt(todaySpent):'Nothing yet'}</span>
+      </div>
+      ${todayTxs.length===0
+        ?`<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No expenses logged today</div>`
+        :todayTxs.map(tx=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openTxModal('${tx.id}')">
+          <div style="width:32px;height:32px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${tx.emoji||catEmoji(tx.category)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.description}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">${tx.category}</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:13px;color:${tx.isRefund?'var(--green)':'var(--red)'}">
+            ${tx.isRefund?'+':'-'}₹${fmt(tx.amount)}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ═══════════════════════════════
 // BOOT
 // ═══════════════════════════════
-window.addEventListener('DOMContentLoaded',()=>{
+window.addEventListener('DOMContentLoaded',async ()=>{
   // Hide all screens initially
   document.getElementById('login').style.display='none';
   document.getElementById('setup').style.display='none';
   document.getElementById('app').style.display='none';
+
+  // Handle redirect result first (for standalone PWA sign-in)
+  try{
+    const result = await fbAuth.getRedirectResult();
+    if(result && result.user){
+      await onSignedIn(result.user);
+      return;
+    }
+  } catch(e){ console.error('Redirect result error:',e); }
 
   // Check auth state
   fbAuth.onAuthStateChanged(async user => {
     if(user){
       await onSignedIn(user);
     } else {
-      // Not signed in - show login
       document.getElementById('login').style.display='flex';
     }
   });
