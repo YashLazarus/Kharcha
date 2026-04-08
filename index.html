@@ -777,11 +777,9 @@ async function signInWithGoogle(){
   try{
     if(isStandalone){
       await fbAuth.signInWithRedirect(provider);
-      // onAuthStateChanged handles result after redirect
     } else {
-      // Use popup — onAuthStateChanged will fire and handle everything
-      // Do NOT call onSignedIn here to avoid double login
-      await fbAuth.signInWithPopup(provider);
+      const result = await fbAuth.signInWithPopup(provider);
+      await onSignedIn(result.user);
     }
   } catch(e){
     errEl.textContent = e.message||'Sign in failed. Try again.';
