@@ -821,7 +821,7 @@ function fbPath(){ return fbDb.ref(`users/${fbUid}/data`); }
 async function fbSave(data){
   if(!fbUid) return;
   try{
-    const payload={...data,lastUpdated:Date.now()};
+    const payload={...data}; // lastUpdated already set in save()
     await fbPath().set(payload);
   } catch(e){
     console.error('FB save error',e);
@@ -883,7 +883,7 @@ async function onSignedIn(user){
     fbUid = user.uid;
     const sub = document.getElementById('user-email-sub');
     if(sub) sub.textContent = user.email || user.displayName || 'Signed in';
-    const remote = await fbLoad();
+    const remote = await Promise.race([fbLoad(),new Promise(r=>setTimeout(()=>r(null),8000))]);
     if(remote && remote.setupDone){
       S = {...defData(), ...remote};
       localStorage.setItem(SK, JSON.stringify(S));
@@ -929,9 +929,11 @@ function signOut(){
 // ═══════════════════════════════
 function load(){try{const r=localStorage.getItem(SK);return r?{...defData(),...JSON.parse(r)}:defData()}catch{return defData()}}
 function save(){
-  S.lastUpdated = Date.now(); // keep in-memory state fresh
+  S.lastUpdated = Date.now();
+  // Clean orphaned budgetSplit keys
+  Object.keys(S.budgetSplit).forEach(k=>{if(!S.categories.includes(k))delete S.budgetSplit[k]});
   localStorage.setItem(SK,JSON.stringify(S));
-  fbSave(S); // sync to Firebase
+  fbSave(S);
 }
 let S=load();
 
@@ -942,6 +944,7 @@ const CAT_EMOJI={food:'🍛',groceries:'🛒',grocery:'🛒',transport:'🚗',tr
 function catEmoji(c){if(!c)return'📌';const l=c.toLowerCase();for(const[k,v]of Object.entries(CAT_EMOJI))if(l.includes(k))return v;return'🏷️'}
 function catColor(p){return p>=90?'var(--red)':p>=70?'var(--yellow)':'var(--green)'}
 function fmt(n){if(!n&&n!==0)return'0';n=parseFloat(n);if(isNaN(n))return'0';return n>=1000?n.toLocaleString('en-IN',{maximumFractionDigits:0}):n%1===0?n.toString():n.toFixed(2)}
+function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function sid(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))&0xffffffff;return'c'+Math.abs(h).toString(36)}
 function esc(s){return encodeURIComponent(s||'')}
 function unesc(s){return decodeURIComponent(s||'')}
@@ -997,21 +1000,7 @@ async function callGemini(prompt,key){
 }
 async function validateKey(k){await callGemini('Say OK',k);return true}
 
-async function checkModels(){
-  if(!S.geminiKey){toast('Set API key first');return}
-  const sub=document.getElementById('models-sub');
-  sub.textContent='Checking…';
-  try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${S.geminiKey}`);
-    const d=await r.json();
-    if(d.error){sub.textContent='Error: '+d.error.message;return}
-    const models=d.models
-      .filter(m=>m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m=>m.name.replace('models/',''))
-      .filter(m=>m.includes('flash')||m.includes('pro'));
-    sub.textContent=models.join(', ')||'No models found';
-  }catch(e){sub.textContent='Failed: '+e.message}
-}
+// checkModels removed — dead code
 
 // ═══════════════════════════════
 // SETUP
@@ -1078,7 +1067,7 @@ const parseCache={}; // FIX: cache parsed results
 
 // FIX: Local fallback parser — handles simple inputs without hitting Gemini
 function localParse(text){
-  const t=text.trim().toLowerCase();
+  const t=text.trim().replace(/₹/g,'').toLowerCase();
   // Detect refund
   const isRefund=/refund|return|reimburse|got back|received back/i.test(t);
   // Extract amount — supports 1k, 1.5k, 1l, plain numbers
@@ -1214,7 +1203,7 @@ function normCat(c){
 }
 function addCat(c){
   const n=normCat(c);
-  if(n&&!S.categories.includes(n)){S.categories.push(n);save()}
+  if(n&&!S.categories.includes(n)){S.categories.push(n);clearParseCache();save()}
 }
 
 function showNewCatModal(name){
@@ -1286,22 +1275,27 @@ function renderHome(){
 function renderCatBars(txs,fb){
   const c=document.getElementById('cat-bars');
   if(!S.categories.length){c.innerHTML='<div style="font-size:13px;color:var(--text3)">Log expenses to see breakdown</div>';return}
+  const hasSplit=Object.values(S.budgetSplit).some(v=>v>0);
   const spend={};
   txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
   txs.filter(e=>e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)-e.amount});
+  // Total spend across all categories for proportional display
+  const totalSpend=Object.values(spend).reduce((a,b)=>a+b,0)||1;
   c.innerHTML=S.categories.map(cat=>{
     const s=Math.max(0,spend[cat]||0);
     const pct=S.budgetSplit[cat]||0;
     const alloc=fb*pct/100;
-    const bp=alloc>0?Math.min(s/alloc*100,100):0;
     // Skip categories with no spend AND no budget allocation
     if(s===0&&alloc===0) return '';
+    // If no allocation set, show bar proportional to total spend
+    const bp=alloc>0?Math.min(s/alloc*100,100):Math.min(s/totalSpend*100,100);
+    const barColor=alloc>0?catColor(bp):'var(--accent)';
     return`<div class="cat-bar-item">
       <div class="cat-bar-hdr">
         <div class="cat-bar-name"><span>${catEmoji(cat)}</span>${cat}</div>
-        <div class="cat-bar-amts">₹${fmt(s)}${alloc>0?' / ₹'+fmt(alloc):''}</div>
+        <div class="cat-bar-amts">₹${fmt(s)}${alloc>0?' / ₹'+fmt(alloc):(!hasSplit&&s>0?'':' ')}</div>
       </div>
-      <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${bp}%;background:${catColor(bp)}"></div></div>
+      <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${bp}%;background:${barColor}"></div></div>
     </div>`;
   }).join('');
 }
@@ -1334,8 +1328,8 @@ function renderTxList(txs){
     return`<div class="tx-item" onclick="openTxModal('${tx.id}')">
       <div class="tx-emoji-box">${tx.emoji||catEmoji(tx.category)}</div>
       <div class="tx-info">
-        <div class="tx-desc">${tx.description}</div>
-        <div class="tx-meta"><span>${dt}</span><span class="tx-cat-tag">${tx.category||'Uncategorized'}</span>${tx.isRefund?'<span class="tx-refund-badge">REFUND</span>':''}</div>
+        <div class="tx-desc">${escHtml(tx.description)}</div>
+        <div class="tx-meta"><span>${dt}</span><span class="tx-cat-tag">${escHtml(tx.category||'Uncategorized')}</span>${tx.isRefund?'<span class="tx-refund-badge">REFUND</span>':''}</div>
       </div>
       <div class="tx-amount ${cls}">${sign}₹${fmt(tx.amount)}</div>
     </div>`;
@@ -1360,7 +1354,7 @@ function renderFixedSettings(){
     <div class="s-row">
       <div class="s-row-icon" style="background:var(--yellow-dim)">📌</div>
       <div class="s-row-content">
-        <div class="s-row-label">${f.name}</div>
+        <div class="s-row-label">${escHtml(f.name)}</div>
         <div class="s-row-sub" style="font-family:var(--mono)">₹${fmt(f.amount)}/month</div>
       </div>
       <div class="s-row-right"><button class="btn btn-danger btn-xs" onclick="deleteFixed('${esc(f.id)}')">Remove</button></div>
@@ -1427,6 +1421,8 @@ function importData(input){
     try{
       const data=JSON.parse(e.target.result);
       if(!data.budget&&data.budget!==0)throw new Error('Invalid backup file');
+      if(!Array.isArray(data.expenses))throw new Error('Invalid backup: missing expenses');
+      data.expenses.forEach((e,i)=>{if(!e.id||!e.date||typeof e.amount!=='number')throw new Error(`Corrupt expense at index ${i}`)});
       if(!confirm(`Import backup? This will replace all current data.\n\n${data.expenses?.length||0} expenses, budget ₹${data.budget}`))return;
       S={...defData(),...data};
       localStorage.setItem(SK,JSON.stringify(S));
@@ -1465,7 +1461,8 @@ function clearAll(){
 function renderSplitPage(){
   const c=document.getElementById('split-items-list');
   if(!S.categories.length){c.innerHTML='<div style="font-size:14px;color:var(--text3)">No categories yet. Log some expenses first!</div>';return}
-  const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+  const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
   c.innerHTML=S.categories.map(cat=>{
     const pct=S.budgetSplit[cat]||0;
     const alloc=fb*pct/100;
@@ -1479,7 +1476,8 @@ function renderSplitPage(){
 }
 
 function updateSplitTotal(){
-  const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+  const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
   let total=0;
   S.categories.forEach(cat=>{
     const inp=document.getElementById(`sp-${sid(cat)}`);if(!inp)return;
@@ -1506,7 +1504,8 @@ async function aiSuggestSplit(){
   const btn=document.getElementById('split-ai-btn');
   btn.disabled=true;btn.innerHTML='<span class="ldots"><span></span><span></span><span></span></span>';
   try{
-    const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
+    const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+    const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
     const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
     const raw=await callGemini(prompt);
     let sug;try{sug=extractJSON(raw)}catch(e){throw new Error('Invalid JSON from Gemini')}
@@ -1549,8 +1548,10 @@ let renamingCat=null,mergingCat=null;
 function renderCatsPage(){
   const c=document.getElementById('cats-mgr-list');
   if(!S.categories.length){c.innerHTML='<div style="font-size:14px;color:var(--text3)">No categories yet</div>';return}
+  const catCounts={};
+  S.expenses.forEach(e=>{catCounts[e.category]=(catCounts[e.category]||0)+1});
   c.innerHTML=S.categories.map(cat=>{
-    const count=S.expenses.filter(e=>e.category===cat).length;
+    const count=catCounts[cat]||0;
     return`<div class="cat-mgr-item">
       <div class="cat-mgr-info">
         <div class="cat-mgr-name">${catEmoji(cat)} ${cat}</div>
@@ -1643,7 +1644,7 @@ function selectTxType(v,el){editTxRefund=v==='refund';document.querySelectorAll(
 function saveTx(){
   const tx=S.expenses.find(e=>e.id===editTxId);if(!tx)return;
   tx.description=document.getElementById('tx-e-desc').value.trim()||tx.description;
-  tx.amount=parseFloat(document.getElementById('tx-e-amt').value)||tx.amount;
+  tx.amount=Math.abs(parseFloat(document.getElementById('tx-e-amt').value)||tx.amount);
   tx.category=document.getElementById('tx-e-cat').value;
   tx.date=document.getElementById('tx-e-date').value;
   tx.isRefund=editTxRefund;tx.emoji=catEmoji(tx.category);
@@ -1686,7 +1687,13 @@ Budget:₹${flexBudget} Spent:₹${spent} Top:${JSON.stringify(topSpend)} Month:
 // ═══════════════════════════════
 function openModal(id){document.getElementById(id).classList.add('active')}
 function closeModal(id){document.getElementById(id).classList.remove('active')}
-document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('active')}));
+document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{
+  if(e.target===o){
+    o.classList.remove('active');
+    // Clear pending state if new-cat modal dismissed
+    if(o.id==='modal-new-cat'){pendingTx=null;pendingCat=null;pendingCatResolve=null;}
+  }
+}));
 
 // ═══════════════════════════════
 // TOAST
@@ -1801,8 +1808,8 @@ function renderTrends(){
       <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:8px">
         <span>₹0</span><span>Day ${dayOfMonth} of ${daysInMonth}</span><span>₹${fmt(flexBudget)}</span>
       </div>
-      <div style="text-align:center;font-size:12px;font-weight:600;color:${projectedEnd<=flexBudget?'var(--green)':'var(--red)'}">
-        At this pace → ₹${fmt(Math.round(projectedEnd))} by month end ${projectedEnd<=flexBudget?'✓':'⚠️'}
+      <div style="text-align:center;font-size:12px;font-weight:600;color:${monthSpent>0?(projectedEnd<=flexBudget?'var(--green)':'var(--red)'):'var(--text3)'}">
+        ${monthSpent>0?`At this pace → ₹${fmt(Math.round(projectedEnd))} by month end ${projectedEnd<=flexBudget?'✓':'⚠️'}`:'Log expenses to see projection'}
       </div>
     </div>
 
@@ -1885,8 +1892,6 @@ function renderTrends(){
 // ═══════════════════════════════
 let editingGoalId = null;
 let contributingGoalId = null;
-let sweepGoalAllocations = {};
-
 function fmtDeadline(dl){
   if(!dl||dl.length<4) return '';
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1940,7 +1945,7 @@ function renderGoals(){
     html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
         <div>
-          <div style="font-size:15px;font-weight:600">${g.name}</div>
+          <div style="font-size:15px;font-weight:600">${escHtml(g.name)}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${g.monthly?'₹'+fmt(g.monthly)+'/mo committed':'No monthly commitment'}${deadlineStr}</div>
         </div>
         <div style="display:flex;gap:6px">
