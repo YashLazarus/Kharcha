@@ -646,6 +646,15 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title">Confirm Expense</div>
+
+    <!-- DATE FIRST — prominent, can't miss it -->
+    <div class="modal-field">
+      <label style="display:flex;align-items:center;justify-content:space-between">
+        <span>📅 Date <span style="font-size:11px;color:var(--text3);font-weight:400" id="ce-date-hint"></span></span>
+      </label>
+      <input type="date" id="ce-date" style="font-size:16px;font-weight:600;color:var(--text)">
+    </div>
+
     <div class="modal-field"><label>Description</label><input type="text" id="ce-desc"></div>
     <div class="modal-field"><label>Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="ce-amt" step="0.01"></div></div>
     <div class="modal-field">
@@ -657,7 +666,6 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </div>
       <div id="ce-suggested-cat" style="display:none;margin-top:6px;font-size:12px;color:var(--accent2)"></div>
     </div>
-    <div class="modal-field"><label>Date</label><input type="date" id="ce-date"></div>
     <div class="modal-field"><label>Type</label>
       <div class="chip-group" id="ce-type-chips">
         <div class="chip-opt selected" data-v="expense" onclick="selectCeType('expense',this)">Expense</div>
@@ -1199,14 +1207,16 @@ function localParse(text){
   // Detect refund
   const isRefund=/refund|return|reimburse|got back|received back/i.test(t);
   // Extract amount — supports 1k, 1.5k, 1l, plain numbers
-  const amtMatch=t.match(/(\d+(?:\.\d+)?)\s*([kl])?/);
+  // [kl] must directly follow digits and not be followed by another letter (avoids 'last', 'lunch' etc)
+  const amtMatch=t.match(/(\d+(?:\.\d+)?)([kl])(?![a-z])/i)||t.match(/(\d+(?:\.\d+)?)/);
   if(!amtMatch)return null;
   let amount=parseFloat(amtMatch[1]);
-  if(amtMatch[2]==='k')amount*=1000;
-  if(amtMatch[2]==='l')amount*=100000;
+  const suffix=(amtMatch[2]||'').toLowerCase();
+  if(suffix==='k')amount*=1000;
+  if(suffix==='l')amount*=100000;
   if(!amount||amount<=0)return null;
   // Remove amount from text to get description
-  const desc=text.replace(/\d+(?:\.\d+)?\s*[kKlL]?/,'').replace(/refund|return|reimburse/gi,'').replace(/\s+/g,' ').trim()||'Expense';
+  const desc=text.replace(/₹/g,'').replace(/\d+(?:\.\d+)?[kKlL](?![a-zA-Z])|\d+(?:\.\d+)?/,'').replace(/refund|return|reimburse/gi,'').replace(/\s+/g,' ').trim()||'Expense';
   // Match known categories by keyword
   const catMap={
     food:['chai','tea','coffee','lunch','dinner','breakfast','food','meal','snack','eat','restaurant','cafe','hotel','biryani','pizza','burger','zomato','swiggy','blinkit','dunzo','maggi','dosa','idli','thali','paratha','roti','sabzi','dal','rice','noodles','pasta','sandwich','salad','juice','lassi','kulfi','icecream','ice cream','bakery','bread','butter','egg','omelette','poha','upma','vada','samosa','chaat','pani puri','bhel','dhaba','mess','canteen','tiffin','dabba','takeaway','food delivery'],
@@ -1315,7 +1325,24 @@ function openConfirmModal({description,amount,category,emoji,isRefund,date}){
 
   document.getElementById('ce-desc').value = description||'';
   document.getElementById('ce-amt').value = amount||'';
-  document.getElementById('ce-date').value = date||(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+
+  const todayStr=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+  const dateVal = date||todayStr;
+  document.getElementById('ce-date').value = dateVal;
+
+  // Show hint if date was parsed from text (not today)
+  const dateHintEl = document.getElementById('ce-date-hint');
+  const dateInp = document.getElementById('ce-date');
+  if(dateVal !== todayStr){
+    const d = new Date(dateVal+'T12:00:00');
+    const label = d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+    dateHintEl.textContent = `· parsed: ${label}`;
+    dateHintEl.style.color = 'var(--accent2)';
+    dateInp.style.borderColor = 'var(--accent)';
+  } else {
+    dateHintEl.textContent = '';
+    dateInp.style.borderColor = '';
+  }
 
   // Populate category dropdown
   const sel = document.getElementById('ce-cat');
@@ -1401,15 +1428,25 @@ function saveConfirmExpense(){
   if(!desc){toast('Enter a description');return;}
   if(!amt){toast('Enter an amount');return;}
   if(!date){toast('Select a date');return;}
+  // Validate date is not in the future
+  const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+  if(date > today){toast('⚠️ Date is in the future — please select today or earlier');return;}
+  // Handle __suggested__ — user didn't interact with dropdown, create the suggested category
+  if(cat && cat.startsWith('__suggested__:')){
+    const sugName = cat.replace('__suggested__:','');
+    document.getElementById('ce-new-cat-inp').value = sugName;
+    ceCreateCategory();
+    cat = document.getElementById('ce-cat').value;
+    if(!cat||cat.startsWith('__suggested__')||cat==='__new__') cat = sugName; // fallback
+    if(!S.categories.includes(cat)) addCat(cat);
+  }
   if(cat==='__new__'){
     const raw = document.getElementById('ce-new-cat-inp').value.trim();
     if(!raw){toast('Enter a category name or select existing');return;}
     const newName = normCat(raw);
     if(!newName||newName==='Uncategorized'){toast('Enter a valid category name');return;}
     ceCreateCategory();
-    // Read from dropdown after ceCreateCategory selects it
     cat = document.getElementById('ce-cat').value;
-    // If still __new__ (ceCreateCategory failed silently), abort
     if(!cat||cat==='__new__'){toast('Enter a category name or select existing');return;}
   }
 
@@ -1438,7 +1475,14 @@ function commitTx({description,amount,category,emoji,isRefund,date}){
     emoji:emoji||catEmoji(category),
     isRefund:!!isRefund
   });
-  save();renderHome();toast(`Added: ${escHtml(description)} ₹${fmt(amount)}`);
+  save();renderHome();
+  // If expense is in a different month than currently viewed, hint user
+  const txMonth = txDate.slice(0,7); // YYYY-MM
+  const viewMonth = `${curYear}-${String(curMonth+1).padStart(2,'0')}`;
+  const toastMsg = txMonth !== viewMonth
+    ? `Added to ${new Date(txDate+'T12:00:00').toLocaleString('default',{month:'long'})} · ₹${fmt(amount)}`
+    : `Added: ${escHtml(description)} ₹${fmt(amount)}`;
+  toast(toastMsg);
 }
 
 function clearParseCache(){Object.keys(parseCache).forEach(k=>delete parseCache[k]);}
