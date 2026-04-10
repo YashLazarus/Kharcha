@@ -632,10 +632,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div class="sub-page-title">Categories</div>
   </div>
   <div class="sub-page-content">
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <input type="text" id="new-cat-input" placeholder="New category name…" style="flex:1">
-      <button class="btn btn-primary btn-sm" onclick="addManualCategory()" style="margin-top:0;white-space:nowrap">+ Add</button>
-    </div>
+    <button class="btn btn-primary" onclick="openAddCatModal()" style="margin-bottom:16px">+ New Category</button>
     <div id="cats-mgr-list"></div>
     <div style="font-size:12px;color:var(--text3);margin-top:14px;line-height:1.6">Add categories manually or they are created automatically when logging expenses.</div>
   </div>
@@ -703,6 +700,22 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-merge')">Cancel</button>
       <button class="btn btn-danger" onclick="confirmMerge()">Merge</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Category Modal -->
+<div class="modal-overlay" id="modal-add-cat">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">New Category</div>
+    <div class="modal-field">
+      <label>Category Name</label>
+      <input type="text" id="add-cat-name" placeholder="e.g. Sports, Dining, Travel…" onkeydown="if(event.key==='Enter')confirmAddCategory()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-cat')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddCategory()">Create</button>
     </div>
   </div>
 </div>
@@ -1281,6 +1294,8 @@ function renderCatBars(txs,fb){
     const pct=S.budgetSplit[cat]||0;
     const alloc=fb*pct/100;
     const bp=alloc>0?Math.min(s/alloc*100,100):0;
+    // Skip categories with no spend AND no budget allocation
+    if(s===0&&alloc===0) return '';
     return`<div class="cat-bar-item">
       <div class="cat-bar-hdr">
         <div class="cat-bar-name"><span>${catEmoji(cat)}</span>${cat}</div>
@@ -1550,18 +1565,27 @@ function renderCatsPage(){
   }).join('');
 }
 
-function addManualCategory(){
-  const inp = document.getElementById('new-cat-input');
-  const name = normCat(inp.value.trim());
+function openAddCatModal(){
+  document.getElementById('add-cat-name').value='';
+  openModal('modal-add-cat');
+  setTimeout(()=>document.getElementById('add-cat-name').focus(),300);
+}
+
+function confirmAddCategory(){
+  const name = normCat(document.getElementById('add-cat-name').value.trim());
   if(!name){toast('Enter a category name');return}
   if(S.categories.includes(name)){toast('Category already exists');return}
   S.categories.push(name);
   clearParseCache();
   save();
-  inp.value='';
+  closeModal('modal-add-cat');
   renderCatsPage();
   renderSettings();
-  toast(`Category "${name}" created`);
+  toast(`"${name}" created`);
+}
+
+function addManualCategory(){
+  openAddCatModal();
 }
 
 function openRename(cat){cat=unesc(cat);renamingCat=cat;document.getElementById('rename-inp').value=cat;openModal('modal-rename')}
