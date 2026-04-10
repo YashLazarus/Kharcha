@@ -321,6 +321,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
             <span id="budget-left">₹0 left</span>
             <span id="budget-of">of ₹0</span>
           </div>
+          <div id="mom-compare" style="font-size:11px;margin-top:8px;display:none;text-align:center;padding-top:8px;border-top:1px solid var(--border)"></div>
         </div>
       </div>
 
@@ -663,20 +664,6 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 </div>
 
 <!-- New Category -->
-<div class="modal-overlay" id="modal-new-cat">
-  <div class="modal">
-    <div class="modal-handle"></div>
-    <div class="modal-title">New Category: <span id="new-cat-display" style="color:var(--accent2)"></span></div>
-    <p style="font-size:13px;color:var(--text3);margin-bottom:16px;line-height:1.6">Gemini detected a new category. What would you like to do with it?</p>
-    <div class="modal-field"><label>Rename to</label><input type="text" id="new-cat-rename"></div>
-    <div class="modal-field"><label>Or merge into existing</label><select id="new-cat-merge"><option value="">— Keep as new category —</option></select></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="confirmNewCat('keep')">Keep As-Is</button>
-      <button class="btn btn-primary" onclick="confirmNewCat('action')">Confirm</button>
-    </div>
-  </div>
-</div>
-
 <!-- Rename Category -->
 <div class="modal-overlay" id="modal-rename">
   <div class="modal">
@@ -1065,6 +1052,106 @@ let pendingCat=null,pendingCatResolve=null,pendingTx=null;
 let isParsingExpense=false; // FIX: loading lock prevents duplicate calls
 const parseCache={}; // FIX: cache parsed results
 
+// Date parser — extracts date hints from input text
+function parseDateFromText(text){
+  const t = text.toLowerCase().trim();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const todayStr = fmtDate(today);
+
+  const months = {
+    january:1,jan:1,february:2,feb:2,march:3,mar:3,april:4,apr:4,
+    may:5,june:6,jun:6,july:7,jul:7,august:8,aug:8,
+    september:9,sep:9,sept:9,october:10,oct:10,november:11,nov:11,december:12,dec:12
+  };
+  const days = {sunday:0,sun:0,monday:1,mon:1,tuesday:2,tue:2,wednesday:3,wed:3,thursday:4,thu:4,friday:5,fri:5,saturday:6,sat:6};
+
+  let date = null;
+  let cleaned = text.trim();
+
+  // "yesterday"
+  if(/\byesterday\b/i.test(t)){
+    const d = new Date(today); d.setDate(d.getDate()-1);
+    date = fmtDate(d);
+    cleaned = cleaned.replace(/\byesterday\b/gi,'').trim();
+  }
+  // "X days ago"
+  else if(/\b(\d+)\s*days?\s*ago\b/i.test(t)){
+    const m = t.match(/\b(\d+)\s*days?\s*ago\b/i);
+    const d = new Date(today); d.setDate(d.getDate()-parseInt(m[1]));
+    date = fmtDate(d);
+    cleaned = cleaned.replace(/\b\d+\s*days?\s*ago\b/gi,'').trim();
+  }
+  // "last week"
+  else if(/\blast\s*week\b/i.test(t)){
+    const d = new Date(today); d.setDate(d.getDate()-7);
+    date = fmtDate(d);
+    cleaned = cleaned.replace(/\blast\s*week\b/gi,'').trim();
+  }
+  // Day name: "monday", "last monday"
+  else if(Object.keys(days).some(d=>new RegExp('\\b'+d+'\\b','i').test(t))){
+    const matched = Object.keys(days).find(d=>new RegExp('\\b'+d+'\\b','i').test(t));
+    const targetDay = days[matched];
+    const d = new Date(today);
+    let diff = today.getDay() - targetDay;
+    if(diff <= 0) diff += 7;
+    d.setDate(d.getDate() - diff);
+    date = fmtDate(d);
+    cleaned = cleaned.replace(new RegExp('\\b(last\\s+)?'+matched+'\\b','gi'),'').trim();
+  }
+  // "14 march", "march 14", "14th march", "14/3", "14-3"
+  else {
+    // Month name + day
+    const monthDayMatch = t.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\b/i)
+      || t.match(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    if(monthDayMatch){
+      let day, monthName;
+      if(isNaN(parseInt(monthDayMatch[1]))){
+        monthName = monthDayMatch[1].toLowerCase();
+        day = parseInt(monthDayMatch[2]);
+      } else {
+        day = parseInt(monthDayMatch[1]);
+        monthName = monthDayMatch[2].toLowerCase();
+      }
+      const month = months[monthName];
+      if(month && day >= 1 && day <= 31){
+        const d = new Date(today.getFullYear(), month-1, day);
+        if(d > today){
+          toast('⚠️ That date is in the future — logging for today');
+          date = todayStr;
+        } else if(d.getFullYear() < today.getFullYear()){
+          toast('⚠️ Dates from last year cannot be logged — using today');
+          date = todayStr;
+        } else {
+          date = fmtDate(d);
+        }
+        cleaned = cleaned.replace(monthDayMatch[0],'').trim();
+      }
+    }
+    // Ordinal day only: "5th", "14th", "3rd"
+    else if(/\b(\d{1,2})(?:st|nd|rd|th)\b/i.test(t)){
+      const m = t.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i);
+      const day = parseInt(m[1]);
+      if(day >= 1 && day <= 31){
+        const d = new Date(today.getFullYear(), today.getMonth(), day);
+        if(d > today) d.setMonth(d.getMonth()-1); // last month if future
+        if(d.getFullYear() < today.getFullYear()){
+          toast('⚠️ Dates from last year cannot be logged — using today');
+          date = todayStr;
+        } else {
+          date = fmtDate(d);
+        }
+        cleaned = cleaned.replace(/\b\d{1,2}(?:st|nd|rd|th)\b/gi,'').trim();
+      }
+    }
+  }
+
+  // Clean up extra spaces
+  cleaned = cleaned.replace(/\s+/g,' ').trim();
+  return { date: date||todayStr, cleaned };
+}
+
 // FIX: Local fallback parser — handles simple inputs without hitting Gemini
 function localParse(text){
   const t=text.trim().replace(/₹/g,'').toLowerCase();
@@ -1111,40 +1198,43 @@ function localParse(text){
 
 async function addExpense(){
   const inp=document.getElementById('quick-input');
-  const text=inp.value.trim();
-  if(!text)return;
-  if(isParsingExpense)return; // FIX: prevent duplicate calls
+  const rawText=inp.value.trim();
+  if(!rawText)return;
+  if(isParsingExpense)return;
+
+  // Store rawText for restore on cancel
+  window._lastRawInput = rawText;
+  // Extract date from text first
+  const {date:parsedDate, cleaned:text} = parseDateFromText(rawText);
+
   if(!S.geminiKey){
-    // FIX: try local parse if no key
     const local=localParse(text);
-    if(local){inp.value='';handleParsed(local);return;}
+    if(local){inp.value='';openConfirmModal({...local,date:parsedDate});return;}
     toast('Set Gemini API key in Settings');return;
   }
-  // FIX: check cache first
+  // Check cache (use cleaned text as key)
   const cacheKey=text.toLowerCase().trim();
   if(parseCache[cacheKey]){
     inp.value='';
-    handleParsed({...parseCache[cacheKey]});
+    openConfirmModal({...parseCache[cacheKey],date:parsedDate});
     return;
   }
-  // FIX: try local parse for simple inputs first
+  // Try local parse first
   const local=localParse(text);
   if(local&&local.amount&&local.category!=='Others'){
     inp.value='';
-    handleParsed(local);
+    openConfirmModal({...local,date:parsedDate});
     return;
   }
-  // Fall through to Gemini for complex inputs
+  // Fall through to Gemini
   isParsingExpense=true;
   inp.value='';inp.disabled=true;
   document.getElementById('parsing-ind').classList.add('active');
   try{
-    // FIX: shorter prompt — only pass top 8 categories to reduce tokens
     const topCats=S.categories.slice(0,8).join(', ')||'none';
     const prompt=`Parse expense, return ONLY JSON, no markdown.
 Input:"${text}" Categories:${topCats}
 {"description":"string","amount":number,"category":"string","emoji":"string","isRefund":boolean}`;
-    // FIX: retry with exponential backoff
     let raw='',attempts=0;
     while(attempts<3){
       try{raw=await callGemini(prompt);break;}
@@ -1159,41 +1249,152 @@ Input:"${text}" Categories:${topCats}
     catch(e){throw new Error('Could not parse AI response')}
     const{description,amount,category,emoji,isRefund}=parsed;
     if(!amount||isNaN(amount))throw new Error('No amount found');
-    // FIX: cache successful parse
     parseCache[cacheKey]={description,amount,category,emoji,isRefund};
-    handleParsed({description,amount,category,emoji,isRefund});
+    openConfirmModal({description,amount,category,emoji,isRefund,date:parsedDate});
   }catch(e){
-    // FIX: fallback to local parser on Gemini failure
     const fallback=localParse(text);
     if(fallback){
       toast('AI unavailable — used smart guess');
-      inp.value='';
-      handleParsed(fallback);
+      openConfirmModal({...fallback,date:parsedDate});
     }else{
       const msg=(e.message||'Unknown error').slice(0,200);
       toast(msg);
-      inp.value=text; // restore input
+      inp.value=rawText;
       console.error('Parse error:',e);
     }
   }
   finally{isParsingExpense=false;inp.disabled=false;document.getElementById('parsing-ind').classList.remove('active');inp.focus()}
 }
 
-function handleParsed({description,amount,category,emoji,isRefund}){
-  category=normCat(category||'Uncategorized');
-  const isNew=category&&!S.categories.includes(category);
-  if(isNew&&S.categories.length>0){
-    pendingTx={description,amount,category,emoji,isRefund};
-    showNewCatModal(category);
-  }else{
-    if(isNew)addCat(category);
-    commitTx({description,amount,category,emoji,isRefund});
+let ceIsRefund = false;
+
+function openConfirmModal({description,amount,category,emoji,isRefund,date}){
+  category = normCat(category||'Uncategorized');
+  ceIsRefund = !!isRefund;
+
+  document.getElementById('ce-desc').value = description||'';
+  document.getElementById('ce-amt').value = amount||'';
+  document.getElementById('ce-date').value = date||(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+
+  // Populate category dropdown
+  const sel = document.getElementById('ce-cat');
+  const allCats = [...S.categories];
+  if(!allCats.includes('Others')) allCats.push('Others');
+  sel.innerHTML = allCats.map(c=>`<option value="${c}"${c===category?' selected':''}>${c}</option>`).join('');
+  // Add "+ New Category" option at bottom
+  sel.innerHTML += '<option value="__new__">+ New Category…</option>';
+
+  // Handle unknown category suggestion
+  const sugEl = document.getElementById('ce-suggested-cat');
+  const newWrap = document.getElementById('ce-new-cat-wrap');
+  if(category && !S.categories.includes(category) && category!=='Others'){
+    // Add suggested category as first selectable option
+    const sugOpt = document.createElement('option');
+    sugOpt.value = '__suggested__:'+category;
+    sugOpt.textContent = '✦ Create "'+category+'" (AI suggested)';
+    sugOpt.selected = true;
+    sel.insertBefore(sugOpt, sel.firstChild);
+    sugEl.textContent = `AI suggested "${category}" — tap Create above or pick an existing category`;
+    sugEl.style.display = 'block';
+    document.getElementById('ce-new-cat-inp').value = category;
+  } else {
+    sugEl.style.display = 'none';
+  }
+  newWrap.style.display = 'none';
+
+  // Type chips
+  document.querySelectorAll('#ce-type-chips .chip-opt').forEach(c=>c.classList.toggle('selected',c.dataset.v===(isRefund?'refund':'expense')));
+
+  openModal('modal-confirm-expense');
+}
+
+function onCeaCatChange(){
+  const sel = document.getElementById('ce-cat');
+  const newWrap = document.getElementById('ce-new-cat-wrap');
+  const v = sel.value;
+  if(v==='__new__'){
+    newWrap.style.display = 'block';
+    document.getElementById('ce-new-cat-inp').focus();
+  } else if(v.startsWith('__suggested__:')){
+    // Auto-create the suggested category
+    const sugName = v.replace('__suggested__:','');
+    document.getElementById('ce-new-cat-inp').value = sugName;
+    ceCreateCategory();
+  } else {
+    newWrap.style.display = 'none';
   }
 }
 
-function commitTx({description,amount,category,emoji,isRefund}){
-  S.expenses.unshift({id:Date.now().toString(36)+Math.random().toString(36).slice(2),date:(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})(),description:description||'Expense',amount:parseFloat(amount),category:category||'Uncategorized',emoji:emoji||catEmoji(category),isRefund:!!isRefund});
-  save();renderHome();toast(`Added: ${description} ₹${fmt(amount)}`);
+function ceCreateCategory(){
+  const raw = document.getElementById('ce-new-cat-inp').value.trim();
+  if(!raw){toast('Enter a category name');return;}
+  const name = normCat(raw);
+  if(!name||name==='Uncategorized'){toast('Enter a valid category name');return;}
+  if(S.categories.includes(name)){toast('Category already exists');return;}
+  S.categories.push(name);
+  clearParseCache();
+  save();
+  // Update dropdown and select new category
+  const sel = document.getElementById('ce-cat');
+  const opt = document.createElement('option');
+  opt.value = name; opt.textContent = name; opt.selected = true;
+  sel.insertBefore(opt, sel.querySelector('option[value="__new__"]'));
+  sel.value = name;
+  document.getElementById('ce-new-cat-wrap').style.display = 'none';
+  document.getElementById('ce-suggested-cat').style.display = 'none';
+  toast(`"${name}" created`);
+}
+
+function selectCeType(v,el){
+  ceIsRefund = v==='refund';
+  document.querySelectorAll('#ce-type-chips .chip-opt').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function saveConfirmExpense(){
+  const desc = document.getElementById('ce-desc').value.trim();
+  const amt = Math.abs(parseFloat(document.getElementById('ce-amt').value)||0);
+  let cat = document.getElementById('ce-cat').value;
+  const date = document.getElementById('ce-date').value;
+
+  if(!desc){toast('Enter a description');return;}
+  if(!amt){toast('Enter an amount');return;}
+  if(!date){toast('Select a date');return;}
+  if(cat==='__new__'){
+    const newName = normCat(document.getElementById('ce-new-cat-inp').value.trim());
+    if(!newName){toast('Enter a category name or select existing');return;}
+    ceCreateCategory();
+    // Read from dropdown after ceCreateCategory selects it
+    cat = document.getElementById('ce-cat').value;
+    if(!cat||cat==='__new__') cat = 'Others';
+  }
+
+  commitTx({description:desc, amount:amt, category:cat, emoji:catEmoji(cat), isRefund:ceIsRefund, date});
+  closeModal('modal-confirm-expense');
+}
+
+function cancelConfirmExpense(){
+  closeModal('modal-confirm-expense');
+  // Restore original input text so user can re-edit
+  const inp = document.getElementById('quick-input');
+  if(window._lastRawInput) inp.value = window._lastRawInput;
+  inp.focus();
+  window._lastRawInput = null;
+}
+
+function commitTx({description,amount,category,emoji,isRefund,date}){
+  const txDate = date||(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+  if(!S.categories.includes(category)&&category!=='Others'){addCat(category);}
+  S.expenses.unshift({
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2),
+    date:txDate,
+    description:description||'Expense',
+    amount:parseFloat(amount),
+    category:category||'Uncategorized',
+    emoji:emoji||catEmoji(category),
+    isRefund:!!isRefund
+  });
+  save();renderHome();toast(`Added: ${escHtml(description)} ₹${fmt(amount)}`);
 }
 
 function clearParseCache(){Object.keys(parseCache).forEach(k=>delete parseCache[k]);}
@@ -1206,42 +1407,7 @@ function addCat(c){
   if(n&&!S.categories.includes(n)){S.categories.push(n);clearParseCache();save()}
 }
 
-function showNewCatModal(name){
-  return new Promise(r=>{
-    pendingCatResolve=r;pendingCat=name;
-    document.getElementById('new-cat-display').textContent=name;
-    document.getElementById('new-cat-rename').value=name;
-    const sel=document.getElementById('new-cat-merge');
-    sel.innerHTML='<option value="">— Keep as new category —</option>';
-    S.categories.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;sel.appendChild(o)});
-    openModal('modal-new-cat');
-  });
-}
-
-function confirmNewCat(action){
-  closeModal('modal-new-cat');
-  if(action==='keep'){
-    addCat(pendingCat);
-    if(pendingTx){commitTx(pendingTx);pendingTx=null}
-    pendingCatResolve?.();
-    if(S.geminiKey&&S.categories.length>1)aiSuggestAndApprove();
-    return;
-  }
-  const merge=document.getElementById('new-cat-merge').value;
-  const renamed=document.getElementById('new-cat-rename').value.trim();
-  if(merge){
-    if(pendingTx){pendingTx.category=normCat(merge);commitTx(pendingTx);pendingTx=null}
-  }else if(renamed&&renamed!==pendingCat){
-    const renamedNorm=normCat(renamed);
-    addCat(renamedNorm);
-    if(pendingTx){pendingTx.category=renamedNorm;commitTx(pendingTx);pendingTx=null}
-  }else{
-    addCat(pendingCat);
-    if(pendingTx){commitTx(pendingTx);pendingTx=null}
-  }
-  pendingCatResolve?.();
-  if(S.geminiKey&&S.categories.length>1)aiSuggestAndApprove();
-}
+// showNewCatModal and confirmNewCat removed — replaced by unified confirm modal
 
 // ═══════════════════════════════
 // HOME RENDER
@@ -1270,6 +1436,41 @@ function renderHome(){
   renderDistChips(txs,spent);
   renderFixedHome();
   renderTxList(txs);
+  renderMoMCompare(spent);
+}
+
+function renderMoMCompare(thisSpent){
+  const el = document.getElementById('mom-compare');
+  if(!el) return;
+  const now = new Date();
+  const isCurrentMonth = curYear===now.getFullYear() && curMonth===now.getMonth();
+  // N = comparison cutoff day
+  const N = isCurrentMonth ? now.getDate() : new Date(curYear,curMonth+1,0).getDate();
+  // Previous month
+  const prevMonth = curMonth===0?11:curMonth-1;
+  const prevYear = curMonth===0?curYear-1:curYear;
+  const prevMK = `${prevYear}-${String(prevMonth+1).padStart(2,'0')}`;
+  // Filter prev month expenses up to same day N
+  const prevTxs = S.expenses.filter(e=>{
+    if(!e.date.startsWith(prevMK)) return false;
+    const day = parseInt(e.date.slice(8),10);
+    return day <= N;
+  });
+  if(!prevTxs.length){el.style.display='none';return;}
+  const prevSpent = Math.max(0,
+    prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0) -
+    prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0)
+  );
+  const diff = thisSpent - prevSpent;
+  const absDiff = Math.abs(diff);
+  const isLess = diff < 0;
+  const isSame = Math.abs(diff) < 1;
+  if(isSame){el.style.display='none';return;}
+  const arrow = isLess?'↓':'↑';
+  const color = isLess?'var(--green)':'var(--red)';
+  const label = isCurrentMonth ? `by day ${N}` : 'vs prev month';
+  el.style.display='block';
+  el.innerHTML=`<span style="color:${color};font-weight:600">${arrow} ₹${fmt(absDiff)} ${isLess?'less':'more'} than ${label} last month</span> <span style="color:var(--text3)">· ₹${fmt(prevSpent)}</span>`;
 }
 
 function renderCatBars(txs,fb){
@@ -1624,6 +1825,30 @@ function deleteCat(cat){
   clearParseCache();save();renderCatsPage();renderHome();toast(`Deleted ${cat}`)
 }
 
+let _paceTooltipClose = null;
+function togglePaceTooltip(){
+  const t = document.getElementById('pace-tooltip');
+  if(!t) return;
+  const isVisible = t.style.display !== 'none';
+  t.style.display = isVisible ? 'none' : 'block';
+  // Remove any stale listener
+  if(_paceTooltipClose){document.removeEventListener('click',_paceTooltipClose);_paceTooltipClose=null;}
+  if(!isVisible){
+    setTimeout(()=>{
+      _paceTooltipClose = function(e){
+        const badge = document.getElementById('pace-badge-wrap');
+        if(!badge||!badge.contains(e.target)){
+          const tip = document.getElementById('pace-tooltip');
+          if(tip) tip.style.display='none';
+          document.removeEventListener('click',_paceTooltipClose);
+          _paceTooltipClose=null;
+        }
+      };
+      document.addEventListener('click',_paceTooltipClose);
+    },10);
+  }
+}
+
 // ═══════════════════════════════
 // TX MODAL
 // ═══════════════════════════════
@@ -1690,8 +1915,6 @@ function closeModal(id){document.getElementById(id).classList.remove('active')}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{
   if(e.target===o){
     o.classList.remove('active');
-    // Clear pending state if new-cat modal dismissed
-    if(o.id==='modal-new-cat'){pendingTx=null;pendingCat=null;pendingCatResolve=null;}
   }
 }));
 
@@ -1797,7 +2020,14 @@ function renderTrends(){
           </div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">₹${fmt(Math.round(flexBudget-monthSpent))} left ÷ ${daysInMonth-dayOfMonth+1} days</div>
         </div>
-        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${isAhead?'rgba(46,204,136,0.15)':'rgba(255,79,106,0.15)'};color:${paceColor};flex-shrink:0">${paceStatus}</span>
+        <div style="position:relative;flex-shrink:0" id="pace-badge-wrap">
+          <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${isAhead?'rgba(46,204,136,0.15)':'rgba(255,79,106,0.15)'};color:${paceColor};cursor:pointer" onclick="togglePaceTooltip()">${paceStatus} ⓘ</span>
+          <div id="pace-tooltip" style="display:none;position:absolute;right:0;top:28px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--text2);line-height:1.6;width:200px;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.3)">
+            <strong style="color:var(--text);display:block;margin-bottom:4px">${isAhead?'Ahead of pace 🟢':'Behind pace 🔴'}</strong>
+            By day ${dayOfMonth} of ${daysInMonth}, you were expected to spend ₹${fmt(Math.round(expectedByNow))}.<br>
+            You've actually spent ₹${fmt(Math.round(monthSpent))} — ₹${fmt(Math.abs(Math.round(gap)))} ${isAhead?'less (good!)':'more (watch out)'}.
+          </div>
+        </div>
       </div>
       <div style="position:relative;margin-bottom:6px">
         <div style="height:8px;background:var(--bg4);border-radius:4px;overflow:hidden;position:relative">
