@@ -632,8 +632,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div class="sub-page-title">Categories</div>
   </div>
   <div class="sub-page-content">
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" id="new-cat-input" placeholder="New category name…" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="addManualCategory()" style="margin-top:0;white-space:nowrap">+ Add</button>
+    </div>
     <div id="cats-mgr-list"></div>
-    <div style="font-size:12px;color:var(--text3);margin-top:14px;line-height:1.6">Categories are created automatically by Gemini when you log expenses. Rename, merge, or delete here.</div>
+    <div style="font-size:12px;color:var(--text3);margin-top:14px;line-height:1.6">Add categories manually or they are created automatically when logging expenses.</div>
   </div>
 </div>
 
@@ -921,7 +925,7 @@ let S=load();
 // ═══════════════════════════════
 // HELPERS
 // ═══════════════════════════════
-const CAT_EMOJI={food:'🍛',groceries:'🛒',grocery:'🛒',transport:'🚗',travel:'✈️',entertainment:'🎬',shopping:'🛍️',health:'💊',fitness:'🏋️',education:'📚',bills:'📋',utilities:'💡',rent:'🏠',savings:'💰',investment:'📈',personal:'👤',clothing:'👗',dining:'🍽️',coffee:'☕',subscriptions:'📱',gifts:'🎁',family:'👨‍👩‍👧',parents:'❤️',pet:'🐾',beauty:'💄',electronics:'💻',fuel:'⛽',medical:'🏥',social:'🎉',uncategorized:'📌',misc:'📌',other:'📌'};
+const CAT_EMOJI={food:'🍛',groceries:'🛒',grocery:'🛒',transport:'🚗',travel:'✈️',entertainment:'🎬',shopping:'🛍️',health:'💊',fitness:'🏋️',sports:'⚽',education:'📚',bills:'📋',utilities:'💡',rent:'🏠',savings:'💰',investment:'📈',personal:'💈',clothing:'👗',dining:'🍽️',coffee:'☕',subscriptions:'📱',gifts:'🎁',family:'👨‍👩‍👧',parents:'❤️',pet:'🐾',beauty:'💄',electronics:'💻',fuel:'⛽',medical:'🏥',social:'🎉',uncategorized:'📌',misc:'📌',other:'📌',others:'📌'};
 function catEmoji(c){if(!c)return'📌';const l=c.toLowerCase();for(const[k,v]of Object.entries(CAT_EMOJI))if(l.includes(k))return v;return'🏷️'}
 function catColor(p){return p>=90?'var(--red)':p>=70?'var(--yellow)':'var(--green)'}
 function fmt(n){if(!n&&n!==0)return'0';n=parseFloat(n);if(isNaN(n))return'0';return n>=1000?n.toLocaleString('en-IN',{maximumFractionDigits:0}):n%1===0?n.toString():n.toFixed(2)}
@@ -1075,15 +1079,19 @@ function localParse(text){
   const desc=text.replace(/\d+(?:\.\d+)?\s*[kKlL]?/,'').replace(/refund|return|reimburse/gi,'').replace(/\s+/g,' ').trim()||'Expense';
   // Match known categories by keyword
   const catMap={
-    food:['chai','tea','coffee','lunch','dinner','breakfast','food','meal','snack','eat','restaurant','cafe','hotel','biryani','pizza','burger','zomato','swiggy','blinkit'],
-    groceries:['grocery','groceries','vegetables','fruits','milk','supermarket','dmart','bigbasket','zepto'],
-    transport:['uber','ola','auto','rickshaw','taxi','bus','metro','train','fuel','petrol','diesel','cab','rapido'],
-    shopping:['amazon','flipkart','myntra','clothes','shirt','shoes','shopping','buy','purchase'],
-    health:['medicine','medical','doctor','hospital','pharmacy','chemist','health','gym','fitness'],
-    entertainment:['movie','netflix','hotstar','prime','spotify','game','concert','ticket','fun'],
-    bills:['electricity','bill','recharge','mobile','internet','broadband','rent','emi','loan'],
-    parents:['parents','mom','dad','family','home','sent','transfer'],
-    subscriptions:['subscription','monthly','annual','yearly'],
+    food:['chai','tea','coffee','lunch','dinner','breakfast','food','meal','snack','eat','restaurant','cafe','hotel','biryani','pizza','burger','zomato','swiggy','blinkit','dunzo','maggi','dosa','idli','thali','paratha','roti','sabzi','dal','rice','noodles','pasta','sandwich','salad','juice','lassi','kulfi','icecream','ice cream','bakery','bread','butter','egg','omelette','poha','upma','vada','samosa','chaat','pani puri','bhel','dhaba','mess','canteen','tiffin','dabba','takeaway','food delivery'],
+    groceries:['grocery','groceries','vegetables','fruits','milk','supermarket','dmart','bigbasket','zepto','reliance fresh','nature basket','daily needs','mandi','kirana','ration','atta','flour','cooking oil','edible oil','dal','pulses','spices','masala','cleaning','detergent','soap','shampoo','toothpaste','household'],
+    transport:['uber','ola','auto','rickshaw','taxi','bus','metro','train','fuel','petrol','diesel','cab','rapido','meru','flight','airways','airfare','toll','parking','bike rental','cycle rental','ferry','boat','tram','monorail','commute','airport','railway','bus fare','auto fare','cab fare','oil change','vehicle service'],
+    shopping:['amazon','flipkart','myntra','clothes','shirt','shoes','shopping','jeans','tshirt','t-shirt','top','dress','saree','kurta','jacket','hoodie','watch','wallet','belt','socks','underwear','accessories','jewellery','sunglasses','hat','mall','boutique','meesho','ajio','nykaa','purse','footwear','sneakers','sandals'],
+    sports:['football','cricket','badminton','tennis','basketball','volleyball','swimming','cycling','running','jogging','gym fee','gym membership','yoga class','zumba','crossfit','workout','exercise','sport','sports gear','sports kit','tournament fee','ground fee','court fee','swimming pool','marathon','kabaddi','hockey','squash','golf','table tennis','ping pong','boxing','martial arts','karate','taekwondo','shuttle cock','sports jersey','sports equipment'],
+    health:['medicine','medical','doctor','hospital','pharmacy','chemist','clinic','dentist','optical','glasses','lens','blood test','lab','pathology','xray','scan','mri','checkup','consultation','prescription','tablet','capsule','syrup','injection','vaccine','physiotherapy','therapy','psychiatrist','dietitian','nutritionist','wellness','apollo','fortis','max hospital','aiims'],
+    entertainment:['movie ticket','movie','netflix','hotstar','prime video','amazon prime','spotify','game','concert ticket','concert','fun','disney','jiocinema','youtube premium','music','theatre','drama','comedy show','exhibition','museum','zoo','amusement park','bowling','billiards','snooker','arcade','escape room','karaoke','night out','bar','pub','club','party','celebration','outing','event ticket'],
+    bills:['electricity','broadband','rent','emi','loan','water bill','gas bill','lpg','cylinder','piped gas','wifi','postpaid','prepaid','dth','cable tv','insurance','tax','maintenance','society','deposit','lease','bsnl','jio bill','airtel','vodafone','idea','adani','bescom','msedcl','recharge','mobile bill','internet bill'],
+    parents:['parents','mom','dad','sent to family','father','mother','brother','sister','bhai','didi','amma','appa','nana','nani','dada','dadi','wife','husband','spouse','kids school','children school','school fees'],
+    subscriptions:['subscription','annual plan','yearly plan','membership','renewal','software','netflix sub','spotify sub','hotstar sub','youtube premium','google one','icloud','dropbox','notion','slack','zoom','microsoft','adobe','canva'],
+    education:['school fee','college fee','university','tuition','coaching','online course','course fee','books','stationery','pen','notebook','school bag','uniform','exam fee','certification','udemy','coursera','edx','byju','unacademy','vedantu','library','study material'],
+    personal:['haircut','salon','parlour','barber','spa','massage','grooming','waxing','threading','facial','manicure','pedicure','makeup','cosmetics','beauty','perfume','deodorant','laundry','dry clean','tailoring','stitching','alteration'],
+    investment:['mutual fund','sip','stocks','shares','equity','fixed deposit','recurring deposit','gold investment','nps','ppf','elss','zerodha','groww','kuvera','paytm money','upstox','angel broking','invest'],
   };
   let category='Others';
   for(const[cat,keywords]of Object.entries(catMap)){
@@ -1540,6 +1548,20 @@ function renderCatsPage(){
       </div>
     </div>`;
   }).join('');
+}
+
+function addManualCategory(){
+  const inp = document.getElementById('new-cat-input');
+  const name = normCat(inp.value.trim());
+  if(!name){toast('Enter a category name');return}
+  if(S.categories.includes(name)){toast('Category already exists');return}
+  S.categories.push(name);
+  clearParseCache();
+  save();
+  inp.value='';
+  renderCatsPage();
+  renderSettings();
+  toast(`Category "${name}" created`);
 }
 
 function openRename(cat){cat=unesc(cat);renamingCat=cat;document.getElementById('rename-inp').value=cat;openModal('modal-rename')}
