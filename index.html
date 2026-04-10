@@ -640,6 +640,37 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 </div>
 
 <!-- MODALS -->
+
+<!-- Confirm Expense Modal -->
+<div class="modal-overlay" id="modal-confirm-expense">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Confirm Expense</div>
+    <div class="modal-field"><label>Description</label><input type="text" id="ce-desc"></div>
+    <div class="modal-field"><label>Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="ce-amt" step="0.01"></div></div>
+    <div class="modal-field">
+      <label>Category</label>
+      <select id="ce-cat" onchange="onCeaCatChange()"></select>
+      <div id="ce-new-cat-wrap" style="display:none;margin-top:8px">
+        <input type="text" id="ce-new-cat-inp" placeholder="New category name…" style="margin-bottom:6px" onkeydown="if(event.key==='Enter')ceCreateCategory()">
+        <button class="btn btn-ghost btn-sm" onclick="ceCreateCategory()" style="margin-top:0;width:auto;padding:8px 16px">Create Category</button>
+      </div>
+      <div id="ce-suggested-cat" style="display:none;margin-top:6px;font-size:12px;color:var(--accent2)"></div>
+    </div>
+    <div class="modal-field"><label>Date</label><input type="date" id="ce-date"></div>
+    <div class="modal-field"><label>Type</label>
+      <div class="chip-group" id="ce-type-chips">
+        <div class="chip-opt selected" data-v="expense" onclick="selectCeType('expense',this)">Expense</div>
+        <div class="chip-opt" data-v="refund" onclick="selectCeType('refund',this)">Refund</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="cancelConfirmExpense()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveConfirmExpense()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit TX -->
 <div class="modal-overlay" id="modal-tx">
   <div class="modal">
@@ -1089,6 +1120,16 @@ function parseDateFromText(text){
     date = fmtDate(d);
     cleaned = cleaned.replace(/\blast\s*week\b/gi,'').trim();
   }
+  // "last month" — clamp to last day if current day doesn't exist in prev month
+  else if(/\blast\s*month\b/i.test(t)){
+    const targetMonth = today.getMonth()-1;
+    const targetYear = targetMonth < 0 ? today.getFullYear()-1 : today.getFullYear();
+    const normMonth = ((targetMonth%12)+12)%12;
+    const lastDayOfMonth = new Date(targetYear,normMonth+1,0).getDate();
+    const safeDay = Math.min(today.getDate(), lastDayOfMonth);
+    date = fmtDate(new Date(targetYear, normMonth, safeDay));
+    cleaned = cleaned.replace(/\blast\s*month\b/gi,'').trim();
+  }
   // Day name: "monday", "last monday"
   else if(Object.keys(days).some(d=>new RegExp('\\b'+d+'\\b','i').test(t))){
     const matched = Object.keys(days).find(d=>new RegExp('\\b'+d+'\\b','i').test(t));
@@ -1361,12 +1402,15 @@ function saveConfirmExpense(){
   if(!amt){toast('Enter an amount');return;}
   if(!date){toast('Select a date');return;}
   if(cat==='__new__'){
-    const newName = normCat(document.getElementById('ce-new-cat-inp').value.trim());
-    if(!newName){toast('Enter a category name or select existing');return;}
+    const raw = document.getElementById('ce-new-cat-inp').value.trim();
+    if(!raw){toast('Enter a category name or select existing');return;}
+    const newName = normCat(raw);
+    if(!newName||newName==='Uncategorized'){toast('Enter a valid category name');return;}
     ceCreateCategory();
     // Read from dropdown after ceCreateCategory selects it
     cat = document.getElementById('ce-cat').value;
-    if(!cat||cat==='__new__') cat = 'Others';
+    // If still __new__ (ceCreateCategory failed silently), abort
+    if(!cat||cat==='__new__'){toast('Enter a category name or select existing');return;}
   }
 
   commitTx({description:desc, amount:amt, category:cat, emoji:catEmoji(cat), isRefund:ceIsRefund, date});
@@ -1400,7 +1444,9 @@ function commitTx({description,amount,category,emoji,isRefund,date}){
 function clearParseCache(){Object.keys(parseCache).forEach(k=>delete parseCache[k]);}
 function normCat(c){
   if(!c)return 'Uncategorized';
-  return c.trim().replace(/\b\w/g,l=>l.toUpperCase());
+  const trimmed=c.trim();
+  if(!trimmed)return 'Uncategorized';
+  return trimmed.replace(/\b\w/g,l=>l.toUpperCase());
 }
 function addCat(c){
   const n=normCat(c);
