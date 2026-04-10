@@ -119,7 +119,7 @@ input[type="number"]{font-family:var(--mono)}
 .cat-bars{padding:0 20px;margin-bottom:18px;display:flex;flex-direction:column;gap:10px}
 .cat-bar-item{display:flex;flex-direction:column;gap:5px}
 .cat-bar-hdr{display:flex;align-items:center;justify-content:space-between}
-.cat-bar-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.cat-bar-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
 .cat-bar-amts{font-family:var(--mono);font-size:11px;color:var(--text3)}
 .cat-bar-track{height:5px;background:var(--bg4);border-radius:3px;overflow:hidden}
 .cat-bar-fill{height:100%;border-radius:3px;transition:width 0.5s cubic-bezier(0.4,0,0.2,1)}
@@ -133,7 +133,7 @@ input[type="number"]{font-family:var(--mono)}
 /* FIXED SECTION HOME */
 .fixed-sec-home{margin:0 20px 18px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .fixed-sec-hdr{padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text3);display:flex;justify-content:space-between}
-.fixed-item{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+.fixed-item{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);gap:8px}
 .fixed-item:last-child{border-bottom:none}
 .fixed-item-amt{font-family:var(--mono);font-size:13px;color:var(--yellow)}
 
@@ -1581,7 +1581,7 @@ function renderCatBars(txs,fb){
     if(alloc===0&&s>0) hasUnallocated=true;
     return`<div class="cat-bar-item">
       <div class="cat-bar-hdr">
-        <div class="cat-bar-name"><span>${catEmoji(cat)}</span>${cat}</div>
+        <div class="cat-bar-name"><span style="flex-shrink:0">${catEmoji(cat)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cat}</span></div>
         <div class="cat-bar-amts">₹${fmt(s)}${alloc>0?' / ₹'+fmt(alloc):''}</div>
       </div>
       <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${bp}%;background:${barColor}"></div></div>
@@ -1604,7 +1604,7 @@ function renderFixedHome(){
   if(!S.fixedExpenses.length){sec.classList.add('hidden');return}
   sec.classList.remove('hidden');
   document.getElementById('fixed-total-lbl').textContent='₹'+fmt(S.fixedExpenses.reduce((s,f)=>s+f.amount,0));
-  list.innerHTML=S.fixedExpenses.map(f=>`<div class="fixed-item"><div>${f.name}</div><div class="fixed-item-amt">₹${fmt(f.amount)}/mo</div></div>`).join('');
+  list.innerHTML=S.fixedExpenses.map(f=>`<div class="fixed-item"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1">${escHtml(f.name)}</div><div class="fixed-item-amt" style="flex-shrink:0">₹${fmt(f.amount)}/mo</div></div>`).join('');
 }
 
 function renderTxList(txs){
@@ -2093,10 +2093,10 @@ function renderTrends(){
     <!-- Combined Budget + Pace Card -->
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-        <div>
+        <div style="flex:1;min-width:0;margin-right:8px">
           <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Today's budget</div>
           <div style="display:flex;align-items:baseline;gap:6px">
-            <span style="font-family:var(--mono);font-size:30px;font-weight:500;color:${dailyBudget>0?'var(--green)':'var(--red)'};line-height:1">₹${fmt(Math.round(dailyBudget))}</span>
+            <span style="font-family:var(--mono);font-size:28px;font-weight:500;color:${dailyBudget>0?'var(--green)':'var(--red)'};line-height:1">₹${fmt(Math.round(dailyBudget))}</span>
             <span style="font-size:12px;color:var(--text2)">available</span>
           </div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">₹${fmt(Math.round(flexBudget-monthSpent))} left ÷ ${daysInMonth-dayOfMonth+1} days</div>
@@ -2130,16 +2130,19 @@ function renderTrends(){
         <span style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3)">Last 7 Days</span>
         <span style="font-family:var(--mono);font-size:11px;color:var(--text2)">avg ₹${fmt(Math.round(avgAmt))}/day</span>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:6px;height:100px;position:relative;padding-bottom:20px">
-        <div style="position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,0.1);bottom:${20+(avgAmt/maxAmt*80)}px;pointer-events:none"></div>
-        ${last7.map(d=>{
-          const barH=d.amt>0?Math.max(4,(d.amt/maxAmt)*80):3;
+      <div style="display:flex;align-items:flex-end;gap:4px;height:110px;position:relative;padding-bottom:18px;overflow:hidden">
+        <div style="position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,0.1);bottom:${18+(avgAmt/maxAmt*78)}px;pointer-events:none"></div>
+        ${last7.map((d,i)=>{
+          const barH=d.amt>0?Math.max(4,(d.amt/maxAmt)*78):3;
           const col=d.isToday?'var(--accent)':d.amt>avgAmt*1.5?'var(--red)':d.amt>avgAmt?'var(--yellow)':'var(--green)';
           const opacity=d.amt===0?0.25:1;
-          return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative">
-            ${d.amt>0?`<span style="font-family:var(--mono);font-size:9px;color:var(--text2);position:absolute;bottom:${barH+22}px;white-space:nowrap">₹${d.amt>=1000?(d.amt/1000).toFixed(1)+'k':d.amt}</span>`:''}
-            <div style="width:100%;height:${barH}px;background:${col};border-radius:4px 4px 0 0;opacity:${opacity};${d.isToday?'box-shadow:0 0 10px rgba(124,106,247,0.4)':''}"></div>
-            <span style="position:absolute;bottom:0;font-size:9px;color:${d.isToday?'var(--accent2)':'var(--text3)'};font-weight:${d.isToday?700:400};white-space:nowrap">${d.label}</span>
+          const isFirst=i===0, isLast=i===6;
+          const amtAlign=isFirst?'left':isLast?'right':'center';
+          const labelAlign=isFirst?'left':isLast?'right':'center';
+          return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;min-width:0">
+            ${d.amt>0?`<span style="font-family:var(--mono);font-size:8px;color:var(--text2);position:absolute;bottom:${barH+20}px;${isFirst?'left:0':isLast?'right:0':'left:50%;transform:translateX(-50%)'};white-space:nowrap;overflow:hidden;max-width:36px">₹${d.amt>=1000?(d.amt/1000).toFixed(1)+'k':d.amt}</span>`:''}
+            <div style="width:100%;height:${barH}px;background:${col};border-radius:4px 4px 0 0;opacity:${opacity};${d.isToday?'box-shadow:0 0 8px rgba(124,106,247,0.4)':''}"></div>
+            <span style="position:absolute;bottom:0;font-size:8px;color:${d.isToday?'var(--accent2)':'var(--text3)'};font-weight:${d.isToday?600:400};${isFirst?'left:0':isLast?'right:0':'left:50%;transform:translateX(-50%)'};white-space:nowrap">${d.label}</span>
           </div>`;
         }).join('')}
       </div>
@@ -2164,7 +2167,7 @@ function renderTrends(){
           <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:5px">
             <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--yellow)'};border-radius:3px;transition:width .6s"></div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3)">
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);flex-wrap:wrap;gap:2px">
             <span>₹${fmt(g.saved)} saved</span>
             <span>${monthsLeft?monthsLeft+' months left':'₹'+fmt(remaining)+' to go'}</span>
           </div>
