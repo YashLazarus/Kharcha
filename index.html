@@ -147,6 +147,8 @@ input[type="number"]{font-family:var(--mono)}
 .tx-meta{font-size:11px;color:var(--text3);margin-top:2px;display:flex;align-items:center;gap:6px}
 .tx-cat-tag{background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:500;color:var(--text2)}
 .tx-refund-badge{font-size:9px;background:var(--green-dim);color:var(--green);padding:2px 5px;border-radius:3px;font-weight:600}
+.tx-savings-badge{font-size:9px;background:rgba(46,204,136,0.15);color:var(--green);padding:2px 5px;border-radius:3px;font-weight:600}
+.tx-amount.sav{color:var(--green)}
 .tx-amount{font-family:var(--mono);font-size:14px;font-weight:500;flex-shrink:0}
 .tx-amount.pos{color:var(--green)}
 .tx-empty{text-align:center;padding:32px 20px;color:var(--text3);font-size:14px;line-height:1.8}
@@ -788,16 +790,33 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   </div>
 </div>
 
-<!-- Month End Sweep Modal -->
-<div class="modal-overlay" id="modal-sweep">
+<!-- Sweep modal removed — auto-sweep to savings now -->
+
+<!-- Add to Savings Modal -->
+<div class="modal-overlay" id="modal-add-savings">
   <div class="modal">
     <div class="modal-handle"></div>
-    <div class="modal-title">Month-end Savings 🎉</div>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">You were under budget last month! What would you like to do with <strong id="sweep-amount" style="color:var(--green)"></strong>?</p>
-    <div id="sweep-goal-list" style="margin-bottom:16px"></div>
+    <div class="modal-title">Add to Savings 💰</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6">Deducted from your budget and added to savings.</p>
+    <div class="modal-field"><label>Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="sav-add-amt" placeholder="500" onkeydown="if(event.key==='Enter')confirmAddSavings()"></div></div>
+    <div class="modal-field"><label>Note — optional</label><input type="text" id="sav-add-note" placeholder="Bonus, freelance, etc." onkeydown="if(event.key==='Enter')confirmAddSavings()"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="sweepToSavings()">Keep as Savings</button>
-      <button class="btn btn-primary" onclick="confirmSweep()">Allocate to Goals</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-savings')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddSavings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transfer Savings to Goal Modal -->
+<div class="modal-overlay" id="modal-savings-transfer">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Move to Goal</div>
+    <div class="modal-field"><label>Amount (₹)</label><div class="input-pfx-wrap"><span class="input-pfx">₹</span><input type="number" id="sav-transfer-amt" placeholder="0" onkeydown="if(event.key==='Enter')confirmSavingsTransfer()"></div><span style="font-size:11px;color:var(--text3);margin-top:4px;display:block">Available: ₹<span id="sav-transfer-available">0</span></span></div>
+    <div class="modal-field"><label>Goal</label><select id="sav-transfer-goal"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-savings-transfer')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmSavingsTransfer()">Move</button>
     </div>
   </div>
 </div>
@@ -812,7 +831,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // DATA
 // ═══════════════════════════════
 const SK = 'kharcha_v1';
-function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[]}}
+function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[],savingsHistory:[]}}
 // ═══════════════════════════════
 // FIREBASE
 // ═══════════════════════════════
@@ -1506,7 +1525,7 @@ function renderHome(){
   const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
   const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
   const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
-  const spentRaw=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
+  const spentRaw=txs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
   const spent=Math.max(0,spentRaw);
   const pct=flexBudget>0?Math.min(spent/flexBudget*100,100):0;
 
@@ -1546,7 +1565,7 @@ function renderMoMCompare(thisSpent){
   });
   if(!prevTxs.length){el.style.display='none';return;}
   const prevSpent = Math.max(0,
-    prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0) -
+    prevTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0) -
     prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0)
   );
   const diff = thisSpent - prevSpent;
@@ -1566,12 +1585,12 @@ function renderCatBars(txs,fb){
   if(!S.categories.length){c.innerHTML='<div style="font-size:13px;color:var(--text3)">Log expenses to see breakdown</div>';return}
   const hasSplit=Object.values(S.budgetSplit).some(v=>v>0);
   const spend={};
-  txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+  txs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
   txs.filter(e=>e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)-e.amount});
   // Total spend across all categories for proportional display
   const totalSpend=Object.values(spend).reduce((a,b)=>a+b,0)||1;
   let hasUnallocated=false;
-  const bars=S.categories.map(cat=>{
+  const bars=S.categories.filter(cat=>cat!=='Savings').map(cat=>{
     const s=Math.max(0,spend[cat]||0);
     const pct=S.budgetSplit[cat]||0;
     const alloc=fb*pct/100;
@@ -1593,7 +1612,7 @@ function renderCatBars(txs,fb){
 function renderDistChips(txs,total){
   const c=document.getElementById('dist-chips');
   if(!total||!S.categories.length){c.innerHTML='';return}
-  const spend={};txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+  const spend={};txs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
   c.innerHTML=Object.entries(spend).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1])
     .map(([cat,amt])=>`<div class="dist-chip"><span>${catEmoji(cat)}</span><span class="dist-chip-pct">${Math.round(amt/total*100)}%</span><span class="dist-chip-name">${cat}</span></div>`).join('');
 }
@@ -1610,16 +1629,22 @@ function renderFixedHome(){
 function renderTxList(txs){
   const c=document.getElementById('tx-list');
   const sorted=[...txs].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  document.getElementById('tx-count-lbl').textContent=sorted.length?`${sorted.length} transactions`:'';
+  const realTxCount=sorted.filter(t=>!t.isSavings).length;
+  const savCount=sorted.filter(t=>t.isSavings).length;
+  document.getElementById('tx-count-lbl').textContent=realTxCount?`${realTxCount} transaction${realTxCount!==1?'s':''}${savCount>0?' · '+savCount+' savings':''}`:'';
+
   if(!sorted.length){c.innerHTML='<div class="tx-empty">No expenses this month<br><span style="font-size:12px">Type anything above to log!</span></div>';return}
   c.innerHTML=sorted.map(tx=>{
-    const sign=tx.isRefund?'+':'-';const cls=tx.isRefund?'pos':'';
+    const sign=tx.isRefund?'+':tx.isSavings?'':'-';
+    const cls=tx.isRefund?'pos':tx.isSavings?'sav':'';
     const dt=new Date(tx.date+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+    const savingsBadge=tx.isSavings?'<span class="tx-savings-badge">SAVINGS</span>':'';
+    const refundBadge=tx.isRefund?'<span class="tx-refund-badge">REFUND</span>':'';
     return`<div class="tx-item" onclick="openTxModal('${tx.id}')">
-      <div class="tx-emoji-box">${tx.emoji||catEmoji(tx.category)}</div>
+      <div class="tx-emoji-box" style="${tx.isSavings?'background:rgba(46,204,136,0.15)':''}">${tx.emoji||catEmoji(tx.category)}</div>
       <div class="tx-info">
         <div class="tx-desc">${escHtml(tx.description)}</div>
-        <div class="tx-meta"><span>${dt}</span><span class="tx-cat-tag">${escHtml(tx.category||'Uncategorized')}</span>${tx.isRefund?'<span class="tx-refund-badge">REFUND</span>':''}</div>
+        <div class="tx-meta"><span>${dt}</span><span class="tx-cat-tag">${escHtml(tx.category||'Uncategorized')}</span>${refundBadge}${savingsBadge}</div>
       </div>
       <div class="tx-amount ${cls}">${sign}₹${fmt(tx.amount)}</div>
     </div>`;
@@ -1754,7 +1779,7 @@ function renderSplitPage(){
   if(!S.categories.length){c.innerHTML='<div style="font-size:14px;color:var(--text3)">No categories yet. Log some expenses first!</div>';return}
   const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
   const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
-  c.innerHTML=S.categories.map(cat=>{
+  c.innerHTML=S.categories.filter(cat=>cat!=='Savings').map(cat=>{
     const pct=S.budgetSplit[cat]||0;
     const alloc=fb*pct/100;
     return`<div class="split-item">
@@ -1770,7 +1795,7 @@ function updateSplitTotal(){
   const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
   const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
   let total=0;
-  S.categories.forEach(cat=>{
+  S.categories.filter(cat=>cat!=='Savings').forEach(cat=>{
     const inp=document.getElementById(`sp-${sid(cat)}`);if(!inp)return;
     const p=parseFloat(inp.value)||0;total+=p;
     const ae=document.getElementById(`sa-${sid(cat)}`);if(ae)ae.textContent='₹'+fmt(fb*p/100);
@@ -1782,7 +1807,7 @@ function updateSplitTotal(){
 }
 
 function saveSplit(){
-  S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i)S.budgetSplit[cat]=parseFloat(i.value)||0});
+  S.categories.filter(cat=>cat!=='Savings').forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i)S.budgetSplit[cat]=parseFloat(i.value)||0});
   // Normalize to exactly 100%
   const tot=Object.values(S.budgetSplit).reduce((s,v)=>s+v,0);
   if(tot>0&&Math.abs(tot-100)>0.5){const sc=100/tot;Object.keys(S.budgetSplit).forEach(k=>{S.budgetSplit[k]=Math.round(S.budgetSplit[k]*sc)});}
@@ -1801,7 +1826,7 @@ async function aiSuggestSplit(){
     const raw=await callGemini(prompt);
     let sug;try{sug=extractJSON(raw)}catch(e){throw new Error('Invalid JSON from Gemini')}
     const _ta=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_ta>0&&_ta!==100){const _sa=100/_ta;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sa)})}
-    S.categories.forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
+    S.categories.filter(cat=>cat!=='Savings').forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
     updateSplitTotal();toast('Gemini suggested a split!');
   }catch(e){toast((e.message||'Could not get suggestion').slice(0,150));console.error('Split suggest error:',e)}
   finally{btn.disabled=false;btn.innerHTML='✦ Gemini Suggest'}
@@ -1933,6 +1958,7 @@ let editTxId=null,editTxRefund=false;
 
 function openTxModal(id){
   const tx=S.expenses.find(e=>e.id===id);if(!tx)return;
+  if(tx.isSavings){toast('Savings entries can\u2019t be edited — manage savings from the Goals tab');return;}
   editTxId=id;editTxRefund=tx.isRefund;
   document.getElementById('tx-e-desc').value=tx.description;
   document.getElementById('tx-e-amt').value=tx.amount;
@@ -1955,7 +1981,21 @@ function saveTx(){
   tx.isRefund=editTxRefund;tx.emoji=catEmoji(tx.category);
   save();closeModal('modal-tx');renderHome();if(document.getElementById('page-trends').classList.contains('active'))renderTrends();toast('Transaction updated');
 }
-function deleteTx(){if(!confirm('Delete this transaction?'))return;S.expenses=S.expenses.filter(e=>e.id!==editTxId);save();closeModal('modal-tx');renderHome();if(document.getElementById('page-trends').classList.contains('active'))renderTrends();toast('Deleted')}
+function deleteTx(){
+  if(!confirm('Delete this transaction?'))return;
+  const tx=S.expenses.find(e=>e.id===editTxId);
+  if(tx&&tx.isSavings){
+    // Reduce savings balance when savings expense deleted
+    S.savings=Math.max(0,(S.savings||0)-tx.amount);
+    // Remove from savingsHistory
+    S.savingsHistory=(S.savingsHistory||[]).filter(h=>h.id!==editTxId);
+  }
+  S.expenses=S.expenses.filter(e=>e.id!==editTxId);
+  save();closeModal('modal-tx');renderHome();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  if(document.getElementById('page-goals').classList.contains('active'))renderGoals();
+  toast('Deleted');
+}
 
 // ═══════════════════════════════
 // INSIGHTS
@@ -1975,8 +2015,8 @@ async function refreshInsights(fromSettings=false){
     const txs=getMonthTxs();
     const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
     const flexBudget=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
-    const spent=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0);
-    const spend={};txs.filter(e=>!e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+    const spent=txs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0);
+    const spend={};txs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
     const topSpend=Object.entries(spend).sort((a,b)=>b[1]-a[1]).slice(0,5).reduce((o,[k,v])=>{o[k]=v;return o},{});
     const prompt=`Indian finance advisor. 2 sentences max, specific, use ₹, no markdown.
 Budget:₹${flexBudget} Spent:₹${spent} Top:${JSON.stringify(topSpend)} Month:${getMonthLabel(curYear,curMonth)}`;
@@ -2056,7 +2096,7 @@ function renderTrends(){
 
   // Month transactions
   const monthTxs=getMonthTxs();
-  const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+  const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
 
   // Pace calculation
   const expectedByNow=(dayOfMonth/daysInMonth)*flexBudget;
@@ -2077,7 +2117,7 @@ function renderTrends(){
     const d=new Date(now);d.setDate(now.getDate()-i);
     const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const dayTxs=S.expenses.filter(e=>e.date===ds);
-    const daySpent=Math.max(0,dayTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-dayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+    const daySpent=Math.max(0,dayTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-dayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
     const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     last7.push({date:ds,label:i===0?'Today':dayNames[d.getDay()],amt:daySpent,isToday:i===0});
   }
@@ -2087,7 +2127,7 @@ function renderTrends(){
   // Today's transactions
   const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const todayTxs=S.expenses.filter(e=>e.date===todayStr).sort((a,b)=>b.id.localeCompare(a.id));
-  const todaySpent=Math.max(0,todayTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-todayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+  const todaySpent=Math.max(0,todayTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-todayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
 
   el.innerHTML=`
     <!-- Combined Budget + Pace Card -->
@@ -2140,7 +2180,14 @@ function renderTrends(){
           const amtAlign=isFirst?'left':isLast?'right':'center';
           const labelAlign=isFirst?'left':isLast?'right':'center';
           return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;min-width:0">
-            ${d.amt>0?`<span style="font-family:var(--mono);font-size:8px;color:var(--text2);position:absolute;bottom:${barH+20}px;${isFirst?'left:0':isLast?'right:0':'left:50%;transform:translateX(-50%)'};white-space:nowrap;overflow:hidden;max-width:36px">₹${d.amt>=1000?(d.amt/1000).toFixed(1)+'k':d.amt}</span>`:''}
+            ${d.amt>0?(()=>{
+              const lbl='₹'+(d.amt>=1000?(d.amt/1000).toFixed(1)+'k':d.amt);
+              const insideBar=barH>22;
+              // If bar tall enough, show label inside bar; otherwise show above
+              return insideBar
+                ? `<span style="font-family:var(--mono);font-size:8px;color:rgba(255,255,255,0.85);position:absolute;bottom:${20+4}px;${isFirst?'left:2px':isLast?'right:2px':'left:50%;transform:translateX(-50%)'};white-space:nowrap;max-width:36px;overflow:hidden">${lbl}</span>`
+                : `<span style="font-family:var(--mono);font-size:8px;color:var(--text2);position:absolute;bottom:${barH+20}px;${isFirst?'left:0':isLast?'right:0':'left:50%;transform:translateX(-50%)'};white-space:nowrap;max-width:36px;overflow:hidden">${lbl}</span>`;
+            })():''}
             <div style="width:100%;height:${barH}px;background:${col};border-radius:4px 4px 0 0;opacity:${opacity};${d.isToday?'box-shadow:0 0 8px rgba(124,106,247,0.4)':''}"></div>
             <span style="position:absolute;bottom:0;font-size:8px;color:${d.isToday?'var(--accent2)':'var(--text3)'};font-weight:${d.isToday?600:400};${isFirst?'left:0':isLast?'right:0':'left:50%;transform:translateX(-50%)'};white-space:nowrap">${d.label}</span>
           </div>`;
@@ -2173,31 +2220,33 @@ function renderTrends(){
           </div>
         </div>`;
       }).join('')}
-      ${S.savings>0?`<div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;color:var(--text2)">💰 Savings</span>
-        <span style="font-family:var(--mono);font-size:13px;color:var(--green)">₹${fmt(S.savings)}</span>
-      </div>`:''}
     </div>`:''}
 
-    <!-- Today -->
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:12px">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3)">Today · ${todayStr.slice(8)} ${new Date(todayStr+'T12:00:00').toLocaleString('default',{month:'short'})}</span>
-        <span style="font-family:var(--mono);font-size:14px">${todaySpent>0?'-₹'+fmt(todaySpent):'Nothing yet'}</span>
+    <!-- Savings Card -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${(S.savingsHistory||[]).length>0?'12px':'0'}">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:2px">Savings</div>
+          <div style="font-family:var(--mono);font-size:24px;font-weight:500;color:var(--green)">₹${fmt(S.savings||0)}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="switchTab('goals')" style="margin-top:0;flex-shrink:0">Manage →</button>
       </div>
-      ${todayTxs.length===0
-        ?`<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No expenses logged today</div>`
-        :todayTxs.map(tx=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openTxModal('${tx.id}')">
-          <div style="width:32px;height:32px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${tx.emoji||catEmoji(tx.category)}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.description}</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px">${tx.category}</div>
-          </div>
-          <div style="font-family:var(--mono);font-size:13px;color:${tx.isRefund?'var(--green)':'var(--red)'}">
-            ${tx.isRefund?'+':'-'}₹${fmt(tx.amount)}
-          </div>
-        </div>`).join('')}
+      ${(S.savingsHistory||[]).length>0?`
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Recent</div>
+        ${(S.savingsHistory||[]).slice(0,3).map(h=>{
+          const d=new Date(h.date+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+          const color=h.amount<0?'var(--accent2)':'var(--green)';
+          const sign=h.amount<0?'':'+';
+          return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+            <div style="min-width:0;flex:1">
+              <div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.note)}</div>
+              <div style="font-size:10px;color:var(--text3)">${d}</div>
+            </div>
+            <span style="font-family:var(--mono);font-size:12px;color:${color};flex-shrink:0;margin-left:8px">${sign}₹${fmt(Math.abs(h.amount))}</span>
+          </div>`;
+        }).join('')}
+      </div>`:''}
     </div>`;
 }
 
@@ -2222,31 +2271,39 @@ function renderGoals(){
   const totalCommitted = goals.reduce((s,g)=>s+(g.monthly||0),0);
   const totalSaved = goals.reduce((s,g)=>s+(g.saved||0),0);
 
-  if(!goals.length && !S.savings){
-    el.innerHTML=`<div style="text-align:center;padding:48px 20px">
-      <div style="font-size:48px;margin-bottom:16px">🎯</div>
-      <div style="font-size:16px;font-weight:600;margin-bottom:8px">No goals yet</div>
-      <div style="font-size:13px;color:var(--text3);line-height:1.6;margin-bottom:24px">Set a goal — a trip, a gadget, an emergency fund.<br>The app tracks your progress automatically.</div>
-      <button class="btn btn-primary" onclick="openAddGoalModal()" style="width:auto;padding:12px 24px">+ Create your first goal</button>
-    </div>`;
-    return;
-  }
-
-  // Summary card
+  // Savings card — always visible at top
   let html = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-      <span style="font-size:13px;color:var(--text2)">Total saved across goals</span>
-      <span style="font-family:var(--mono);font-size:15px;font-weight:500;color:var(--green)">₹${fmt(totalSaved)}</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:2px">Savings</div>
+        <div style="font-family:var(--mono);font-size:26px;font-weight:500;color:var(--green)">₹${fmt(S.savings||0)}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" onclick="openAddSavingsModal()" style="margin-top:0">+ Add</button>
+        <button class="btn btn-primary btn-sm" onclick="openSavingsTransferModal()" style="margin-top:0">→ Goal</button>
+      </div>
     </div>
-    <div style="display:flex;justify-content:space-between">
-      <span style="font-size:13px;color:var(--text2)">Monthly committed</span>
-      <span style="font-family:var(--mono);font-size:13px;color:var(--accent2)">₹${fmt(totalCommitted)}/mo</span>
-    </div>
-    ${S.savings>0?`<div style="display:flex;justify-content:space-between;margin-top:4px;padding-top:8px;border-top:1px solid var(--border)">
-      <span style="font-size:13px;color:var(--text2)">💰 Unallocated savings</span>
-      <span style="font-family:var(--mono);font-size:13px;color:var(--green)">₹${fmt(S.savings)}</span>
+    ${totalSaved>0||totalCommitted>0?`<div style="padding-top:10px;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:12px;color:var(--text2)">Saved in goals</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text)">₹${fmt(totalSaved)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--text2)">Monthly committed</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--accent2)">₹${fmt(totalCommitted)}/mo</span>
+      </div>
     </div>`:''}
   </div>`;
+
+  if(!goals.length){
+    html+=`<div style="text-align:center;padding:32px 20px;background:var(--bg2);border:1px solid var(--border);border-radius:16px">
+      <div style="font-size:36px;margin-bottom:12px">🎯</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px">No goals yet</div>
+      <div style="font-size:13px;color:var(--text3);line-height:1.6;margin-bottom:20px">Set a goal — a trip, a gadget, an emergency fund.</div>
+      <button class="btn btn-primary" onclick="openAddGoalModal()" style="width:auto;padding:10px 24px">+ Create goal</button>
+    </div>`;
+    el.innerHTML=html;return;
+  }
 
   // Goal cards
   goals.forEach(g=>{
@@ -2380,68 +2437,110 @@ function confirmContribute(){
 
 function checkMonthEndSweep(){
   const now = new Date();
-  const lastDay = new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  if(now.getDate() !== 1) return; // only on 1st of month
+  if(now.getDate() !== 1) return;
   const prevKey = `sweep_${now.getFullYear()}_${now.getMonth()}`;
-  if((S.sweepHistory||[]).includes(prevKey)) return; // already prompted
+  if((S.sweepHistory||[]).includes(prevKey)) return;
   // Calculate last month's underspend
   const prevMonth = now.getMonth()===0?11:now.getMonth()-1;
   const prevYear = now.getMonth()===0?now.getFullYear()-1:now.getFullYear();
   const prevMK = `${prevYear}-${String(prevMonth+1).padStart(2,'0')}`;
-  const prevTxs = S.expenses.filter(e=>e.date.startsWith(prevMK));
+  const monthName = new Date(prevYear,prevMonth,1).toLocaleString('default',{month:'long'});
+  const prevTxs = S.expenses.filter(e=>e.date.startsWith(prevMK)&&!e.isSavings);
   const prevSpent = Math.max(0,prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
   const prevFixed = S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
   const prevCommits = (S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
   const prevFlex = Math.max(0,S.budget-prevFixed-prevCommits);
-  const saved = prevFlex - prevSpent;
-  if(saved <= 0) return; // nothing to sweep
+  const saved = Math.round(prevFlex - prevSpent);
+  if(saved <= 0) return;
+  // Mark as done
   if(!S.sweepHistory) S.sweepHistory=[];
   S.sweepHistory.push(prevKey);
+  // Auto-add to savings silently
+  S.savings = (S.savings||0)+saved;
+  if(!S.savingsHistory) S.savingsHistory=[];
+  S.savingsHistory.unshift({id:Date.now().toString(36),date:prevMK+'-01',amount:saved,type:'sweep',note:`${monthName} underspend`});
   save();
-  // Show sweep modal
-  document.getElementById('sweep-amount').textContent = '₹'+fmt(Math.round(saved));
-  const goals = (S.goals||[]).filter(g=>g.saved<g.target);
-  const list = document.getElementById('sweep-goal-list');
-  if(goals.length){
-    list.innerHTML = goals.map(g=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div style="flex:1"><div style="font-size:13px">${g.name}</div><div style="font-size:11px;color:var(--text3)">₹${fmt(g.saved)} / ₹${fmt(g.target)}</div></div>
-      <div class="input-pfx-wrap" style="width:100px"><span class="input-pfx">₹</span><input type="number" class="inp" data-gid="${g.id}" placeholder="0" style="padding:8px 8px 8px 22px;font-size:13px"></div>
-    </div>`).join('');
-    // Store sweep amount for use in confirmSweep
-    list.dataset.swept = Math.round(saved);
-  } else {
-    list.innerHTML = '<div style="font-size:13px;color:var(--text3)">No active goals to allocate to.</div>';
-    list.dataset.swept = Math.round(saved);
-  }
-  setTimeout(()=>openModal('modal-sweep'), 500);
+  renderGoals();renderHome();
+  if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  // Show informational toast
+  setTimeout(()=>toast(`🎉 You spent ₹${fmt(saved)} less in ${monthName} — added to savings!`),600);
 }
 
-function confirmSweep(){
-  const list = document.getElementById('sweep-goal-list');
-  const inputs = list.querySelectorAll('input[data-gid]');
-  let totalAllocated = 0;
-  inputs.forEach(inp=>{
-    const amt = parseFloat(inp.value)||0;
-    if(amt>0){
-      S.goals = (S.goals||[]).map(g=>g.id===inp.dataset.gid?{...g,saved:(g.saved||0)+amt}:g);
-      totalAllocated+=amt;
-    }
+// ═══════════════════════════════
+// SAVINGS
+// ═══════════════════════════════
+function openAddSavingsModal(){
+  document.getElementById('sav-add-amt').value='';
+  document.getElementById('sav-add-note').value='';
+  openModal('modal-add-savings');
+  setTimeout(()=>document.getElementById('sav-add-amt').focus(),300);
+}
+
+function confirmAddSavings(){
+  const amt=Math.abs(parseFloat(document.getElementById('sav-add-amt').value)||0);
+  const note=document.getElementById('sav-add-note').value.trim()||'Savings';
+  if(!amt){toast('Enter an amount');return;}
+  const todayStr=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+  // Add to savings balance
+  S.savings=(S.savings||0)+amt;
+  // Record in savings history
+  if(!S.savingsHistory)S.savingsHistory=[];
+  const hid=Date.now().toString(36)+Math.random().toString(36).slice(2);
+  S.savingsHistory.unshift({id:hid,date:todayStr,amount:amt,type:'manual',note});
+  // Log as special expense in expenses array so it shows in transaction list
+  S.expenses.unshift({
+    id:hid,
+    date:todayStr,
+    description:note,
+    amount:amt,
+    category:'Savings',
+    emoji:'💰',
+    isRefund:false,
+    isSavings:true
   });
-  const swept = parseFloat(list.dataset.swept)||0;
-  if(totalAllocated > swept){toast(`Total cannot exceed ₹${fmt(swept)}`);return}
-  const leftover = swept - totalAllocated;
-  if(leftover>0) S.savings = (S.savings||0)+leftover;
-  save();closeModal('modal-sweep');renderGoals();renderHome();
+  // Ensure Savings category exists
+  if(!S.categories.includes('Savings'))S.categories.push('Savings');
+  save();
+  closeModal('modal-add-savings');
+  renderGoals();renderHome();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
-  toast(`₹${fmt(Math.round(swept))} allocated!`);
+  toast(`₹${fmt(amt)} added to savings!`);
 }
 
-function sweepToSavings(){
-  const list = document.getElementById('sweep-goal-list');
-  const swept = parseFloat(list.dataset.swept)||0;
-  if(swept>0){ S.savings=(S.savings||0)+swept; save(); toast(`₹${fmt(Math.round(swept))} added to savings!`); }
-  closeModal('modal-sweep');renderGoals();renderHome();
+function openSavingsTransferModal(){
+  const goals=(S.goals||[]).filter(g=>g.saved<g.target);
+  if(!goals.length){toast('No active goals to transfer to');return;}
+  document.getElementById('sav-transfer-amt').value='';
+  document.getElementById('sav-transfer-available').textContent=fmt(S.savings||0);
+  const sel=document.getElementById('sav-transfer-goal');
+  sel.innerHTML=goals.map(g=>`<option value="${g.id}">${escHtml(g.name)} · ₹${fmt(g.target-g.saved)} to go</option>`).join('');
+  openModal('modal-savings-transfer');
+  setTimeout(()=>document.getElementById('sav-transfer-amt').focus(),300);
+}
+
+function confirmSavingsTransfer(){
+  const amt=Math.abs(parseFloat(document.getElementById('sav-transfer-amt').value)||0);
+  const gid=document.getElementById('sav-transfer-goal').value;
+  if(!amt){toast('Enter an amount');return;}
+  if(amt>(S.savings||0)){toast(`Cannot exceed savings balance ₹${fmt(S.savings||0)}`);return;}
+  const goal=(S.goals||[]).find(g=>g.id===gid);
+  if(!goal){toast('Goal not found');return;}
+  const remaining=Math.max(0,goal.target-goal.saved);
+  if(amt>remaining){toast(`Cannot exceed remaining goal amount ₹${fmt(remaining)}`);return;}
+  // Deduct from savings
+  S.savings=Math.max(0,(S.savings||0)-amt);
+  // Add to goal
+  S.goals=(S.goals||[]).map(g=>g.id===gid?{...g,saved:(g.saved||0)+amt}:g);
+  // Record in history
+  if(!S.savingsHistory)S.savingsHistory=[];
+  S.savingsHistory.unshift({id:Date.now().toString(36),date:(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})(),amount:-amt,type:'transfer',note:`→ ${goal.name}`});
+  save();
+  closeModal('modal-savings-transfer');
+  renderGoals();renderHome();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+  const updatedGoal=(S.goals||[]).find(g=>g.id===gid);
+  if(updatedGoal&&updatedGoal.saved>=updatedGoal.target)toast(`🎉 ${goal.name} goal reached!`);
+  else toast(`₹${fmt(amt)} moved to ${goal.name}!`);
 }
 
 // ═══════════════════════════════
