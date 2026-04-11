@@ -1525,7 +1525,7 @@ function renderHome(){
   const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
   const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
   const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
-  const spentRaw=txs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
+  const spentRaw=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
   const spent=Math.max(0,spentRaw);
   const pct=flexBudget>0?Math.min(spent/flexBudget*100,100):0;
 
@@ -1565,7 +1565,7 @@ function renderMoMCompare(thisSpent){
   });
   if(!prevTxs.length){el.style.display='none';return;}
   const prevSpent = Math.max(0,
-    prevTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0) -
+    prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0) -
     prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0)
   );
   const diff = thisSpent - prevSpent;
@@ -1861,9 +1861,11 @@ function renderCatsPage(){
         <div class="cat-mgr-count">${count} transaction${count!==1?'s':''}</div>
       </div>
       <div class="cat-mgr-actions">
-        <button class="btn btn-ghost btn-xs" onclick="openRename('${esc(cat)}')">Rename</button>
+        ${cat==='Savings'
+          ?'<span style="font-size:11px;color:var(--text3);padding:4px 8px">System category</span>'
+          :`<button class="btn btn-ghost btn-xs" onclick="openRename('${esc(cat)}')">Rename</button>
         <button class="btn btn-ghost btn-xs" onclick="openMerge('${esc(cat)}')">Merge</button>
-        <button class="btn btn-danger btn-xs" onclick="deleteCat('${esc(cat)}')">Delete</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteCat('${esc(cat)}')">Delete</button>`}
       </div>
     </div>`;
   }).join('');
@@ -1958,7 +1960,18 @@ let editTxId=null,editTxRefund=false;
 
 function openTxModal(id){
   const tx=S.expenses.find(e=>e.id===id);if(!tx)return;
-  if(tx.isSavings){toast('Savings entries can\u2019t be edited — manage savings from the Goals tab');return;}
+  if(tx.isSavings){
+    // For savings expenses — show delete-only confirmation, no edit
+    if(confirm(`Delete this savings entry of ₹${fmt(tx.amount)}? This will also reduce your savings balance.`)){
+      S.savings=Math.max(0,(S.savings||0)-tx.amount);
+      S.savingsHistory=(S.savingsHistory||[]).filter(h=>h.id!==tx.id);
+      S.expenses=S.expenses.filter(e=>e.id!==tx.id);
+      save();renderHome();renderGoals();
+      if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
+      toast('Savings entry deleted');
+    }
+    return;
+  }
   editTxId=id;editTxRefund=tx.isRefund;
   document.getElementById('tx-e-desc').value=tx.description;
   document.getElementById('tx-e-amt').value=tx.amount;
@@ -1983,13 +1996,6 @@ function saveTx(){
 }
 function deleteTx(){
   if(!confirm('Delete this transaction?'))return;
-  const tx=S.expenses.find(e=>e.id===editTxId);
-  if(tx&&tx.isSavings){
-    // Reduce savings balance when savings expense deleted
-    S.savings=Math.max(0,(S.savings||0)-tx.amount);
-    // Remove from savingsHistory
-    S.savingsHistory=(S.savingsHistory||[]).filter(h=>h.id!==editTxId);
-  }
   S.expenses=S.expenses.filter(e=>e.id!==editTxId);
   save();closeModal('modal-tx');renderHome();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
@@ -2096,7 +2102,7 @@ function renderTrends(){
 
   // Month transactions
   const monthTxs=getMonthTxs();
-  const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+  const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
 
   // Pace calculation
   const expectedByNow=(dayOfMonth/daysInMonth)*flexBudget;
@@ -2117,7 +2123,7 @@ function renderTrends(){
     const d=new Date(now);d.setDate(now.getDate()-i);
     const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const dayTxs=S.expenses.filter(e=>e.date===ds);
-    const daySpent=Math.max(0,dayTxs.filter(e=>!e.isRefund&&!e.isSavings).reduce((s,e)=>s+e.amount,0)-dayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+    const daySpent=Math.max(0,dayTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-dayTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
     const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     last7.push({date:ds,label:i===0?'Today':dayNames[d.getDay()],amt:daySpent,isToday:i===0});
   }
@@ -2278,10 +2284,7 @@ function renderGoals(){
         <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:2px">Savings</div>
         <div style="font-family:var(--mono);font-size:26px;font-weight:500;color:var(--green)">₹${fmt(S.savings||0)}</div>
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0">
-        <button class="btn btn-ghost btn-sm" onclick="openAddSavingsModal()" style="margin-top:0">+ Add</button>
-        <button class="btn btn-primary btn-sm" onclick="openSavingsTransferModal()" style="margin-top:0">→ Goal</button>
-      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openAddSavingsModal()" style="margin-top:0;flex-shrink:0">+ Add</button>
     </div>
     ${totalSaved>0||totalCommitted>0?`<div style="padding-top:10px;border-top:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;margin-bottom:3px">
@@ -2319,8 +2322,9 @@ function renderGoals(){
           <div style="font-size:15px;font-weight:600">${escHtml(g.name)}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${g.monthly?'₹'+fmt(g.monthly)+'/mo committed':'No monthly commitment'}${deadlineStr}</div>
         </div>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-xs" onclick="openEditGoalModal('${g.id}')">Edit</button>
+          <button class="btn btn-ghost btn-xs" onclick="openSavingsTransferForGoal('${g.id}')" style="margin-top:0">From Savings</button>
           <button class="btn btn-primary btn-xs" onclick="openContributeModal('${g.id}')" style="margin-top:0">+ Add</button>
         </div>
       </div>
@@ -2406,11 +2410,18 @@ function deleteGoal(){
   if(!editingGoalId) return;
   const g = (S.goals||[]).find(g=>g.id===editingGoalId);
   if(!g) return;
-  if(!confirm(`Delete "${g.name}"? Progress will be lost.`)) return;
+  if(!confirm(`Delete "${g.name}"? This cannot be undone.`)) return;
+  // Return saved amount to savings balance automatically
+  if(g.saved>0){
+    S.savings=(S.savings||0)+g.saved;
+    if(!S.savingsHistory)S.savingsHistory=[];
+    const todayStr=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+    S.savingsHistory.unshift({id:Date.now().toString(36),date:todayStr,amount:g.saved,type:'return',note:`← ${g.name} deleted`});
+  }
   S.goals = S.goals.filter(g=>g.id!==editingGoalId);
   save();closeModal('modal-add-goal');renderGoals();renderHome();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
-  toast('Goal deleted');
+  toast(g.saved>0?`Goal deleted · ₹${fmt(g.saved)} returned to savings`:'Goal deleted');
 }
 
 function openContributeModal(id){
@@ -2507,15 +2518,20 @@ function confirmAddSavings(){
   toast(`₹${fmt(amt)} added to savings!`);
 }
 
-function openSavingsTransferModal(){
+function openSavingsTransferModal(preselectedId){
+  if(!(S.savings>0)){toast('No savings to transfer');return;}
   const goals=(S.goals||[]).filter(g=>g.saved<g.target);
   if(!goals.length){toast('No active goals to transfer to');return;}
   document.getElementById('sav-transfer-amt').value='';
   document.getElementById('sav-transfer-available').textContent=fmt(S.savings||0);
   const sel=document.getElementById('sav-transfer-goal');
-  sel.innerHTML=goals.map(g=>`<option value="${g.id}">${escHtml(g.name)} · ₹${fmt(g.target-g.saved)} to go</option>`).join('');
+  sel.innerHTML=goals.map(g=>`<option value="${g.id}"${g.id===preselectedId?' selected':''}>${escHtml(g.name)} · ₹${fmt(g.target-g.saved)} to go</option>`).join('');
   openModal('modal-savings-transfer');
   setTimeout(()=>document.getElementById('sav-transfer-amt').focus(),300);
+}
+
+function openSavingsTransferForGoal(goalId){
+  openSavingsTransferModal(goalId);
 }
 
 function confirmSavingsTransfer(){
