@@ -831,7 +831,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // DATA
 // ═══════════════════════════════
 const SK = 'kharcha_v1';
-function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[],savingsHistory:[]}}
+function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[],savingsHistory:[],budgetHistory:{}}}
 // ═══════════════════════════════
 // FIREBASE
 // ═══════════════════════════════
@@ -969,6 +969,15 @@ function save(){
   S.lastUpdated = Date.now();
   // Clean orphaned budgetSplit keys
   Object.keys(S.budgetSplit).forEach(k=>{if(!S.categories.includes(k))delete S.budgetSplit[k]});
+  // Snapshot current month's budget config — used by sweep to avoid wrong calculation
+  const _now=new Date();
+  const _mk=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
+  if(!S.budgetHistory)S.budgetHistory={};
+  S.budgetHistory[_mk]={
+    budget:S.budget,
+    fixed:S.fixedExpenses.reduce((s,f)=>s+f.amount,0),
+    goalCommits:(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0)
+  };
   localStorage.setItem(SK,JSON.stringify(S));
   // Debounce Firebase writes — collapse rapid successive saves into one
   clearTimeout(_saveDebounce);
@@ -1274,6 +1283,7 @@ async function addExpense(){
   if(!S.geminiKey){
     const local=localParse(text);
     if(local){inp.value='';openConfirmModal({...local,date:parsedDate});return;}
+    window._lastRawInput=null; // Clear stale ref — parse failed, input stays intact
     toast('Set Gemini API key in Settings');return;
   }
   // Check cache (use cleaned text as key)
@@ -1359,7 +1369,7 @@ function openConfirmModal({description,amount,category,emoji,isRefund,date}){
 
   // Populate category dropdown
   const sel = document.getElementById('ce-cat');
-  const allCats = [...S.categories];
+  const allCats = S.categories.filter(c=>c!=='Savings');
   if(!allCats.includes('Others')) allCats.push('Others');
   sel.innerHTML = allCats.map(c=>`<option value="${c}"${c===category?' selected':''}>${c}</option>`).join('');
   // Add "+ New Category" option at bottom
@@ -1587,8 +1597,9 @@ function renderCatBars(txs,fb){
   const spend={};
   txs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
   txs.filter(e=>e.isRefund).forEach(e=>{spend[e.category]=(spend[e.category]||0)-e.amount});
-  // Total spend across all categories for proportional display
-  const totalSpend=Object.values(spend).reduce((a,b)=>a+b,0)||1;
+  // Total spend across all categories for proportional display (include savings for correct proportions)
+  const savingsSpendForTotal=txs.filter(e=>e.isSavings).reduce((s,e)=>s+e.amount,0);
+  const totalSpend=(Object.values(spend).reduce((a,b)=>a+b,0)+savingsSpendForTotal)||1;
   let hasUnallocated=false;
   const bars=S.categories.filter(cat=>cat!=='Savings').map(cat=>{
     const s=Math.max(0,spend[cat]||0);
@@ -1606,15 +1617,32 @@ function renderCatBars(txs,fb){
       <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${bp}%;background:${barColor}"></div></div>
     </div>`;
   }).join('');
-  c.innerHTML=bars+(hasUnallocated?'<div style="font-size:11px;color:var(--text3);margin-top:4px">● Purple = no budget target set · go to Settings → Budget Split</div>':'');
+  // Add savings bar if any savings expenses this month
+  const savingsSpend=txs.filter(e=>e.isSavings).reduce((s,e)=>s+e.amount,0);
+  let savingsBar='';
+  if(savingsSpend>0){
+    const savPct=Math.min(savingsSpend/totalSpend*100,100);
+    savingsBar=`<div class="cat-bar-item">
+      <div class="cat-bar-hdr">
+        <div class="cat-bar-name"><span style="flex-shrink:0">💰</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Savings</span></div>
+        <div class="cat-bar-amts">₹${fmt(savingsSpend)}</div>
+      </div>
+      <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${savPct}%;background:var(--green)"></div></div>
+    </div>`;
+  }
+  c.innerHTML=bars+savingsBar+(hasUnallocated?'<div style="font-size:11px;color:var(--text3);margin-top:4px">● Purple = no budget target set · go to Settings → Budget Split</div>':'');
 }
 
 function renderDistChips(txs,total){
   const c=document.getElementById('dist-chips');
   if(!total||!S.categories.length){c.innerHTML='';return}
-  const spend={};txs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+  const spend={};
+  txs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{spend[e.category]=(spend[e.category]||0)+e.amount});
+  // Include savings as a category in dist chips
+  const savingsSpend=txs.filter(e=>e.isSavings).reduce((s,e)=>s+e.amount,0);
+  if(savingsSpend>0) spend['Savings']=(spend['Savings']||0)+savingsSpend;
   c.innerHTML=Object.entries(spend).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1])
-    .map(([cat,amt])=>`<div class="dist-chip"><span>${catEmoji(cat)}</span><span class="dist-chip-pct">${Math.round(amt/total*100)}%</span><span class="dist-chip-name">${cat}</span></div>`).join('');
+    .map(([cat,amt])=>`<div class="dist-chip"><span>${cat==='Savings'?'💰':catEmoji(cat)}</span><span class="dist-chip-pct">${Math.round(amt/total*100)}%</span><span class="dist-chip-name">${cat}</span></div>`).join('');
 }
 
 function renderFixedHome(){
@@ -1740,6 +1768,15 @@ function importData(input){
       data.expenses.forEach((e,i)=>{if(!e.id||!e.date||typeof e.amount!=='number')throw new Error(`Corrupt expense at index ${i}`)});
       if(!confirm(`Import backup? This will replace all current data.\n\n${data.expenses?.length||0} expenses, budget ₹${data.budget}`))return;
       S={...defData(),...data};
+      // Reconstruct S.savings if missing — sum isSavings expenses minus transfers
+      if(!S.savings||S.savings===0){
+        const savExp=S.expenses.filter(e=>e.isSavings);
+        if(savExp.length>0){
+          const rawSav=savExp.reduce((s,e)=>s+e.amount,0);
+          const transferred=(S.savingsHistory||[]).filter(h=>h.type==='transfer').reduce((s,h)=>s+Math.abs(h.amount),0);
+          S.savings=Math.max(0,rawSav-transferred);
+        }
+      }
       localStorage.setItem(SK,JSON.stringify(S));
       toast('Restoring…');
       fbSave(S).then(()=>{
@@ -1977,7 +2014,7 @@ function openTxModal(id){
   document.getElementById('tx-e-amt').value=tx.amount;
   document.getElementById('tx-e-date').value=tx.date;
   const sel=document.getElementById('tx-e-cat');
-  sel.innerHTML=[...new Set([...S.categories,tx.category,'Uncategorized'])].map(c=>`<option value="${c}"${c===tx.category?' selected':''}>${c}</option>`).join('');
+  sel.innerHTML=[...new Set([...S.categories.filter(c=>c!=='Savings'),tx.category,'Uncategorized'])].map(c=>`<option value="${c}"${c===tx.category?' selected':''}>${c}</option>`).join('');
   document.querySelectorAll('#tx-type-chips .chip-opt').forEach(c=>c.classList.toggle('selected',c.dataset.v===(tx.isRefund?'refund':'expense')));
   openModal('modal-tx');
 }
@@ -2094,8 +2131,8 @@ async function installPWA(){
 function renderTrends(){
   const el=document.getElementById('trends-content');
   const now=new Date();
-  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const dayOfMonth=now.getDate();
+  const daysInMonth=new Date(curYear,curMonth+1,0).getDate();
+  const dayOfMonth=curYear===now.getFullYear()&&curMonth===now.getMonth()?now.getDate():daysInMonth;
   const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
   const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
   const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
@@ -2104,16 +2141,19 @@ function renderTrends(){
   const monthTxs=getMonthTxs();
   const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
 
-  // Pace calculation
-  const expectedByNow=(dayOfMonth/daysInMonth)*flexBudget;
+  // Pace calculation — only meaningful for current month
+  const isCurrentMonthView = curYear===now.getFullYear()&&curMonth===now.getMonth();
+  const paceDay = isCurrentMonthView ? dayOfMonth : daysInMonth; // past months: use full month
+  const paceDaysInMonth = isCurrentMonthView ? daysInMonth : new Date(curYear,curMonth+1,0).getDate();
+  const expectedByNow=(paceDay/paceDaysInMonth)*flexBudget;
   const gap=expectedByNow-monthSpent;
-  const projectedEnd=flexBudget>0?(monthSpent/dayOfMonth)*daysInMonth:0;
+  const projectedEnd=flexBudget>0&&paceDay>0?(monthSpent/paceDay)*paceDaysInMonth:0;
   const isAhead=gap>0;
   const remaining=Math.max(0,flexBudget-monthSpent);
-  const daysLeft=Math.max(1,daysInMonth-dayOfMonth+1);
-  const dailyBudget=remaining/daysLeft;
+  const daysLeft=isCurrentMonthView?Math.max(1,daysInMonth-dayOfMonth+1):1;
+  const dailyBudget=isCurrentMonthView?remaining/daysLeft:0;
   const paceActualPct=flexBudget>0?Math.min(100,(monthSpent/flexBudget)*100):0;
-  const paceExpPct=Math.min(100,(dayOfMonth/daysInMonth)*100);
+  const paceExpPct=Math.min(100,(paceDay/paceDaysInMonth)*100);
   const paceColor=isAhead?'var(--green)':'var(--red)';
   const paceStatus=isAhead?`₹${fmt(Math.abs(gap))} ahead`:`₹${fmt(Math.abs(gap))} behind`;
 
@@ -2437,13 +2477,17 @@ function confirmContribute(){
   const amt = parseFloat(document.getElementById('contrib-amount').value)||0;
   if(!amt){toast('Enter an amount');return}
   const existing = (S.goals||[]).find(g=>g.id===contributingGoalId);
-  if(existing && existing.saved>=existing.target){toast('Goal already reached! 🎉');return}
-  S.goals = (S.goals||[]).map(g=>g.id===contributingGoalId?{...g,saved:(g.saved||0)+amt}:g);
+  if(!existing){toast('Goal not found');return;}
+  if(existing.saved>=existing.target){toast('Goal already reached! 🎉');return}
+  const remaining=Math.max(0,existing.target-existing.saved);
+  const cappedAmt=Math.min(amt,remaining);
+  S.goals = (S.goals||[]).map(g=>g.id===contributingGoalId?{...g,saved:(g.saved||0)+cappedAmt}:g);
   save();closeModal('modal-contribute');renderGoals();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
   const g = S.goals.find(g=>g.id===contributingGoalId);
-  if(g && g.saved>=g.target) toast('🎉 Goal reached! Congratulations!');
-  else toast(`Added ₹${fmt(amt)} to goal!`);
+  if(g && g.saved>=g.target) toast('🎉 Goal reached!'+(cappedAmt<amt?` (only ₹${fmt(cappedAmt)} was needed)`:''));
+  else if(cappedAmt<amt) toast(`Goal only needed ₹${fmt(cappedAmt)} — added that amount`);
+  else toast(`Added ₹${fmt(cappedAmt)} to goal!`);
 }
 
 function checkMonthEndSweep(){
@@ -2458,9 +2502,12 @@ function checkMonthEndSweep(){
   const monthName = new Date(prevYear,prevMonth,1).toLocaleString('default',{month:'long'});
   const prevTxs = S.expenses.filter(e=>e.date.startsWith(prevMK)&&!e.isSavings);
   const prevSpent = Math.max(0,prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
-  const prevFixed = S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
-  const prevCommits = (S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
-  const prevFlex = Math.max(0,S.budget-prevFixed-prevCommits);
+  // Use historical snapshot if available — prevents wrong sweep if budget changed after month ended
+  const _snap=(S.budgetHistory||{})[prevMK];
+  const prevFixed = _snap ? _snap.fixed : S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
+  const prevCommits = _snap ? _snap.goalCommits : (S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const prevBudget = _snap ? _snap.budget : S.budget;
+  const prevFlex = Math.max(0,prevBudget-prevFixed-prevCommits);
   const saved = Math.round(prevFlex - prevSpent);
   if(saved <= 0) return;
   // Mark as done
@@ -2510,7 +2557,7 @@ function confirmAddSavings(){
     isSavings:true
   });
   // Ensure Savings category exists
-  if(!S.categories.includes('Savings'))S.categories.push('Savings');
+  if(!S.categories.includes('Savings')){S.categories.push('Savings');clearParseCache();}
   save();
   closeModal('modal-add-savings');
   renderGoals();renderHome();
@@ -2531,6 +2578,8 @@ function openSavingsTransferModal(preselectedId){
 }
 
 function openSavingsTransferForGoal(goalId){
+  const g=(S.goals||[]).find(g=>g.id===goalId);
+  if(g&&g.saved>=g.target){toast('This goal is already complete! 🎉');return;}
   openSavingsTransferModal(goalId);
 }
 
