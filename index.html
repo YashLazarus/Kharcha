@@ -347,6 +347,11 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <span style="color:var(--text3)">›</span>
       </div>
 
+      <!-- Daily Insight Card -->
+      <div id="daily-insight-card" style="margin:0 20px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:13px 16px">
+        <div id="daily-insight-text" style="font-size:13px;color:var(--text);line-height:1.6">👍 All looking good — keep it up!</div>
+      </div>
+
       <!-- Insight Card -->
       <div class="insight-card">
         <div class="insight-header">
@@ -581,9 +586,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
     <!-- TRENDS PAGE -->
     <div class="page" id="page-trends">
-      <div class="page-hdr">
-        <div class="page-hdr-title">Trends</div>
-        <div class="page-hdr-sub" id="trends-sub">Daily spending tracker</div>
+      <div class="page-hdr" style="display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div class="page-hdr-title">Trends</div>
+          <div class="page-hdr-sub" id="trends-sub">Daily spending tracker</div>
+        </div>
+        <div id="streak-pill" style="position:relative;display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--text2);margin-top:4px;flex-shrink:0"></div>
       </div>
       <div id="trends-content" style="padding:0 16px 16px"></div>
     </div>
@@ -831,7 +839,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // DATA
 // ═══════════════════════════════
 const SK = 'kharcha_v1';
-function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[],savingsHistory:[],budgetHistory:{}}}
+function defData(){return{geminiKey:'',budget:0,fixedExpenses:[],expenses:[],categories:[],budgetSplit:{},insights:'',insightsDate:'',setupDone:false,lastUpdated:0,goals:[],savings:0,sweepHistory:[],savingsHistory:[],budgetHistory:{},dailyInsight:{text:'',date:''},insightCooldowns:{}}}
 // ═══════════════════════════════
 // FIREBASE
 // ═══════════════════════════════
@@ -1077,7 +1085,7 @@ async function doSetup(){
 // ═══════════════════════════════
 // INIT
 // ═══════════════════════════════
-function initApp(){renderHome();renderSettings();showCachedInsights();setTimeout(checkMonthEndSweep,1000)}
+function initApp(){renderHome();renderSettings();showCachedInsights();renderDailyInsight();setTimeout(checkMonthEndSweep,1000)}
 function showCachedInsights(){
   // Only show cached insights - never auto-call Gemini on startup
   if(S.insights)document.getElementById('insight-text').textContent=S.insights;
@@ -1093,7 +1101,7 @@ function switchTab(t){
   document.getElementById(`page-${t}`).classList.add('active');
   document.getElementById(`tab-${t}`).classList.add('active');
   document.querySelector('.app-content').scrollTop=0;
-  if(t==='trends') renderTrends();
+  if(t==='trends'){renderTrends();}
   if(t==='goals') renderGoals();
 }
 function openSubPage(id){
@@ -1502,6 +1510,8 @@ function commitTx({description,amount,category,emoji,isRefund,date}){
     emoji:emoji||catEmoji(category),
     isRefund:!!isRefund
   });
+  // Reset daily insight cache so it recomputes with new data
+  if(S.dailyInsight)S.dailyInsight.date='';
   save();renderHome();
   // If expense is in a different month than currently viewed, hint user
   const txMonth = txDate.slice(0,7); // YYYY-MM
@@ -1554,6 +1564,7 @@ function renderHome(){
   renderFixedHome();
   renderTxList(txs);
   renderMoMCompare(spent);
+  renderDailyInsight();
 }
 
 function renderMoMCompare(thisSpent){
@@ -1733,17 +1744,17 @@ async function saveKey(){
   }
 }
 
-function saveBudget(){const v=parseFloat(document.getElementById('s-budget').value);if(v>0){S.budget=v;save();renderHome();toast('Budget updated')}}
+function saveBudget(){const v=parseFloat(document.getElementById('s-budget').value);if(v>0){S.budget=v;if(S.dailyInsight)S.dailyInsight.date='';save();renderHome();toast('Budget updated')}}
 
 function addFixed(){
   const name=document.getElementById('fx-name').value.trim();
   const amt=parseFloat(document.getElementById('fx-amt').value);
   if(!name||!amt||amt<=0){toast('Enter name and amount');return}
-  S.fixedExpenses.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name,amount:amt});save();
+  S.fixedExpenses.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name,amount:amt});if(S.dailyInsight)S.dailyInsight.date='';save();
   document.getElementById('fx-name').value='';document.getElementById('fx-amt').value='';
   renderSettings();renderHome();toast(`Added: ${name}`);
 }
-function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);save();renderSettings();renderHome();}
+function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);if(S.dailyInsight)S.dailyInsight.date='';save();renderSettings();renderHome();}
 
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
@@ -2129,6 +2140,7 @@ async function installPWA(){
 // TRENDS
 // ═══════════════════════════════
 function renderTrends(){
+  renderStreakPill();
   const el=document.getElementById('trends-content');
   const now=new Date();
   const daysInMonth=new Date(curYear,curMonth+1,0).getDate();
@@ -2442,6 +2454,7 @@ function saveGoal(){
     S.goals.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name,target,monthly,deadline,saved:0,createdAt:(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`})()});
     toast('Goal created!');
   }
+  if(S.dailyInsight)S.dailyInsight.date='';
   save();closeModal('modal-add-goal');renderGoals();renderHome();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
 }
@@ -2606,6 +2619,197 @@ function confirmSavingsTransfer(){
   const updatedGoal=(S.goals||[]).find(g=>g.id===gid);
   if(updatedGoal&&updatedGoal.saved>=updatedGoal.target)toast(`🎉 ${goal.name} goal reached!`);
   else toast(`₹${fmt(amt)} moved to ${goal.name}!`);
+}
+
+// ═══════════════════════════════
+// DAILY INSIGHTS ENGINE
+// ═══════════════════════════════
+
+function computeStreak(){
+  const now=new Date();
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const expDates=new Set(S.expenses.map(e=>e.date));
+  let streak=0;
+  const d=new Date(now);
+  // Count consecutive days with at least one expense (including today)
+  for(let i=0;i<365;i++){
+    const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if(expDates.has(ds)){streak++;d.setDate(d.getDate()-1);}
+    else break;
+  }
+  return streak;
+}
+
+function renderStreakPill(){
+  const el=document.getElementById('streak-pill');
+  if(!el) return;
+  const streak=computeStreak();
+  const emoji=streak>=30?'🏆':streak>=14?'⚡':streak>=7?'🔥':streak>=3?'✨':'📅';
+  el.innerHTML=`<span style="font-size:13px">${emoji} <strong>${streak}</strong> day${streak!==1?'s':''} streak</span><span id="streak-info-btn" onclick="toggleStreakTooltip()" style="margin-left:4px;cursor:pointer;color:var(--text3);font-size:11px">ⓘ</span>
+  <div id="streak-tooltip" style="display:none;position:absolute;right:0;top:28px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--text2);line-height:1.6;width:220px;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.3)">A streak counts every day you log at least one expense or savings entry. Keep it going!</div>`;
+}
+
+let _streakTooltipClose=null;
+function toggleStreakTooltip(){
+  const t=document.getElementById('streak-tooltip');
+  if(!t) return;
+  const visible=t.style.display!=='none';
+  t.style.display=visible?'none':'block';
+  if(_streakTooltipClose){document.removeEventListener('click',_streakTooltipClose);_streakTooltipClose=null;}
+  if(!visible){
+    setTimeout(()=>{
+      _streakTooltipClose=function(e){
+        if(!document.getElementById('streak-pill')?.contains(e.target)){
+          const tip=document.getElementById('streak-tooltip');
+          if(tip)tip.style.display='none';
+          document.removeEventListener('click',_streakTooltipClose);
+          _streakTooltipClose=null;
+        }
+      };
+      document.addEventListener('click',_streakTooltipClose);
+    },10);
+  }
+}
+
+function isOnCooldown(type){
+  const cooldowns=S.insightCooldowns||{};
+  const until=cooldowns[type];
+  if(!until) return false;
+  const today=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
+  return until > today;
+}
+
+function setCooldown(type, days){
+  if(!S.insightCooldowns) S.insightCooldowns={};
+  const d=new Date(); d.setDate(d.getDate()+days);
+  S.insightCooldowns[type]=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function computeDailyInsight(){
+  const now=new Date();
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  // Return cached insight if already computed today
+  if(S.dailyInsight&&S.dailyInsight.date===todayStr&&S.dailyInsight.text){
+    return S.dailyInsight.text;
+  }
+
+  const dayOfMonth=now.getDate();
+  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
+  const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
+  const curMK=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const prevMonth=now.getMonth()===0?11:now.getMonth()-1;
+  const prevYear=now.getMonth()===0?now.getFullYear()-1:now.getFullYear();
+  const prevMK=`${prevYear}-${String(prevMonth+1).padStart(2,'0')}`;
+  const monthTxs=S.expenses.filter(e=>e.date.startsWith(curMK));
+  const monthSpent=Math.max(0,monthTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-monthTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
+
+  let insight=null;
+
+  // ── 1. PACE ALERT (cooldown: 2 days) ───────────────────────────────────────
+  if(!insight && flexBudget>0 && dayOfMonth>=3 && monthSpent>0 && !isOnCooldown('pace')){
+    const expectedByNow=(dayOfMonth/daysInMonth)*flexBudget;
+    const ratio=monthSpent/expectedByNow;
+    if(ratio>1.25){
+      insight=`⚠️ Spent ₹${fmt(monthSpent)} by day ${dayOfMonth} — ${Math.round((ratio-1)*100)}% more than expected pace`;
+      setCooldown('pace',2);
+    } else if(ratio<0.6 && dayOfMonth>=7){
+      insight=`✅ Spent ₹${fmt(monthSpent)} by day ${dayOfMonth} — well under expected pace`;
+      setCooldown('pace',2);
+    }
+  }
+
+  // ── 2. CATEGORY SPIKE (cooldown: 3 days) ───────────────────────────────────
+  if(!insight && dayOfMonth>=5 && !isOnCooldown('spike')){
+    const curSpend={};
+    monthTxs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{curSpend[e.category]=(curSpend[e.category]||0)+e.amount});
+    const prevTxs=S.expenses.filter(e=>e.date.startsWith(prevMK)&&parseInt(e.date.slice(8))<=dayOfMonth);
+    const prevSpend={};
+    prevTxs.filter(e=>!e.isRefund&&!e.isSavings).forEach(e=>{prevSpend[e.category]=(prevSpend[e.category]||0)+e.amount});
+    let topSpike=null;
+    for(const [cat,amt] of Object.entries(curSpend)){
+      const prev=prevSpend[cat]||0;
+      if(prev>0&&amt>prev*1.8&&amt>300){
+        if(!topSpike||amt-prev>topSpike.diff) topSpike={cat,amt,prev,diff:amt-prev,pct:Math.round((amt/prev-1)*100)};
+      }
+    }
+    if(topSpike){
+      insight=`📈 ${topSpike.cat} is ₹${fmt(topSpike.diff)} higher than last month at this point (+${topSpike.pct}%)`;
+      setCooldown('spike',3);
+    }
+  }
+
+  // ── 3. GOAL MILESTONE (cooldown: per milestone, never repeats) ─────────────
+  if(!insight){
+    const milestones=[25,50,75,100];
+    const seen=S.insightCooldowns||{};
+    for(const g of (S.goals||[])){
+      if(!g.target||g.target<=0) continue;
+      const pct=(g.saved/g.target)*100;
+      for(const m of milestones){
+        const key=`milestone_${g.id}_${m}`;
+        if(pct>=m-10&&pct<m+5&&pct<=100&&!seen[key]){
+          const needed=Math.max(0,Math.round(g.target*m/100-g.saved));
+          insight=needed<=0
+            ?`🎯 ${g.name} hit ${m}%!`
+            :`🎯 ${g.name} is ${Math.round(pct)}% funded — ₹${fmt(needed)} more hits ${m}%`;
+          if(!S.insightCooldowns)S.insightCooldowns={};
+          S.insightCooldowns[key]='permanent';
+          break;
+        }
+      }
+      if(insight) break;
+    }
+  }
+
+  // ── 4. MONTH-END PROJECTION (last 7 days, cooldown: 3 days) ────────────────
+  if(!insight && dayOfMonth>=daysInMonth-6 && flexBudget>0 && monthSpent>0 && !isOnCooldown('projection')){
+    const projected=Math.round((monthSpent/dayOfMonth)*daysInMonth);
+    const diff=flexBudget-projected;
+    if(Math.abs(diff)>200){
+      insight=diff>0
+        ?`📊 At this pace you'll finish ₹${fmt(diff)} under budget this month ✓`
+        :`📊 At this pace you'll exceed budget by ₹${fmt(Math.abs(diff))} — ease up`;
+      setCooldown('projection',3);
+    }
+  }
+
+  // ── 5. WEEKLY SUMMARY (Mondays only, cooldown: 7 days) ────────────────────
+  if(!insight && now.getDay()===1 && !isOnCooldown('weekly')){
+    const last7dates=[];
+    for(let i=1;i<=7;i++){const d=new Date(now);d.setDate(now.getDate()-i);last7dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);}
+    const last7txs=S.expenses.filter(e=>last7dates.includes(e.date)&&!e.isRefund);
+    const last7total=last7txs.reduce((s,e)=>s+e.amount,0);
+    const last7sav=last7txs.filter(e=>e.isSavings).reduce((s,e)=>s+e.amount,0);
+    if(last7total>0){
+      const daySpends={};
+      last7txs.forEach(e=>{daySpends[e.date]=(daySpends[e.date]||0)+e.amount});
+      const heavy=Object.entries(daySpends).sort((a,b)=>b[1]-a[1])[0];
+      const heavyDay=heavy?new Date(heavy[0]+'T12:00:00').toLocaleDateString('en-IN',{weekday:'long'}):'';
+      const savNote=last7sav>0?` · ₹${fmt(last7sav)} to savings`:'';
+      insight=`📅 Last week: ₹${fmt(last7total)} spent${savNote}${heavyDay?` · heaviest day: ${heavyDay}`:''}`;
+      setCooldown('weekly',7);
+    }
+  }
+
+  // ── FALLBACK ───────────────────────────────────────────────────────────────
+  if(!insight) insight='👍 All looking good — keep it up!';
+
+  // Cache result
+  if(!S.dailyInsight)S.dailyInsight={};
+  S.dailyInsight.text=insight;
+  S.dailyInsight.date=todayStr;
+  save();
+  return insight;
+}
+
+function renderDailyInsight(){
+  const el=document.getElementById('daily-insight-text');
+  if(!el) return;
+  const text=computeDailyInsight();
+  el.textContent=text;
 }
 
 // ═══════════════════════════════
