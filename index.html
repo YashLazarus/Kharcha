@@ -282,12 +282,15 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <input type="number" id="setup-budget" placeholder="50000" min="1">
     </div>
     <div class="setup-divider"></div>
-    <div class="setup-label">Gemini API Key</div>
+    <div class="setup-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Gemini API Key</span>
+      <span style="font-size:10px;font-weight:400;color:var(--accent2);background:rgba(124,106,247,0.1);padding:2px 8px;border-radius:10px">Optional</span>
+    </div>
     <div class="key-wrap">
-      <input type="password" id="setup-key" placeholder="AIza...">
+      <input type="password" id="setup-key" placeholder="AIza… — add later in Settings">
       <button class="key-toggle" onclick="toggleKey('setup-key',this)">👁</button>
     </div>
-    <div class="setup-hint">Free key from <strong>aistudio.google.com</strong> — powers NL logging, insights & smart budget split. 1,500 req/day free.</div>
+    <div class="setup-hint">Unlocks AI expense categorisation, smart insights & budget split suggestions. Free key from <strong>aistudio.google.com</strong>. You can add this anytime in Settings.</div>
     <div id="setup-key-status" class="key-status hidden"></div>
     <div class="mt14">
       <button class="btn btn-primary" onclick="doSetup()">Get Started →</button>
@@ -331,8 +334,8 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div class="api-banner hidden" id="api-banner" onclick="switchTab('settings')">
         <span style="font-size:20px">🔑</span>
         <div style="flex:1">
-          <div class="api-banner-title">Set up Gemini API Key</div>
-          <div class="api-banner-sub">Required for smart features · Tap to go to Settings</div>
+          <div class="api-banner-title">✦ Unlock AI Features</div>
+          <div class="api-banner-sub">Add a free Gemini API key in Settings for smarter categorisation & insights</div>
         </div>
         <span style="color:var(--text3)">›</span>
       </div>
@@ -631,7 +634,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     </div>
     <div id="split-items-list"></div>
     <div class="flex gap8 mt14">
-      <button class="btn btn-ai" onclick="aiSuggestSplit()" id="split-ai-btn">✦ Gemini Suggest</button>
+      ${S.geminiKey?`<button class="btn btn-ai" onclick="aiSuggestSplit()" id="split-ai-btn">✦ Gemini Suggest</button>`:'<span style="font-size:12px;color:var(--text3)">Add Gemini API key to unlock AI split suggestions</span>'}
       <button class="btn btn-primary" onclick="saveSplit()" id="split-save-btn" disabled>Save Split</button>
     </div>
   </div>
@@ -1065,21 +1068,26 @@ async function doSetup(){
   const budget=parseFloat(document.getElementById('setup-budget').value);
   const key=document.getElementById('setup-key').value.trim();
   if(!budget||budget<=0){toast('Enter a valid budget');return}
-  if(!key){toast('Enter your Gemini API key');return}
-  if(!key.startsWith('AIza')||key.length<30){
-    const st=document.getElementById('setup-key-status');
-    st.className='key-status invalid';st.textContent='✗ Key format looks wrong. Should start with AIza';st.classList.remove('hidden');return;
-  }
   const st=document.getElementById('setup-key-status');
-  st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating key…';st.classList.remove('hidden');
-  try{
-    await validateKey(key);
-    S.geminiKey=key;S.budget=budget;S.setupDone=true;save();
-    st.className='key-status valid';st.textContent='✓ Key validated!';
-    setTimeout(()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()},600)
-  }catch(e){
-    st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key. Try again.');
+  // Key is optional — if provided, validate it
+  if(key){
+    if(!key.startsWith('AIza')||key.length<30){
+      st.className='key-status invalid';st.textContent='✗ Key format looks wrong. Should start with AIza';st.classList.remove('hidden');return;
+    }
+    st.className='key-status checking';st.innerHTML='<span class="ldots"><span></span><span></span><span></span></span> Validating key…';st.classList.remove('hidden');
+    try{
+      await validateKey(key);
+      S.geminiKey=key;
+      st.className='key-status valid';st.textContent='✓ Key validated!';
+    }catch(e){
+      st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key. Try again.');
+      return;
+    }
   }
+  S.budget=budget;S.setupDone=true;save();
+  const proceed=()=>{document.getElementById('setup').style.display='none';document.getElementById('app').style.display='flex';initApp()};
+  if(key) setTimeout(proceed,600);
+  else proceed();
 }
 
 // ═══════════════════════════════
@@ -1088,7 +1096,8 @@ async function doSetup(){
 function initApp(){renderHome();renderSettings();showCachedInsights();renderDailyInsight();setTimeout(checkMonthEndSweep,1000)}
 function showCachedInsights(){
   // Only show cached insights - never auto-call Gemini on startup
-  if(S.insights)document.getElementById('insight-text').textContent=S.insights;
+  if(S.insights) document.getElementById('insight-text').textContent=S.insights;
+  else if(!S.geminiKey) document.getElementById('insight-text').textContent='Add a Gemini API key in Settings to unlock AI insights ✦';
   else document.getElementById('insight-text').textContent='Tap ↻ to get AI insights!';
 }
 
@@ -1291,8 +1300,10 @@ async function addExpense(){
   if(!S.geminiKey){
     const local=localParse(text);
     if(local){inp.value='';openConfirmModal({...local,date:parsedDate});return;}
-    window._lastRawInput=null; // Clear stale ref — parse failed, input stays intact
-    toast('Set Gemini API key in Settings');return;
+    // No key and local parse failed — open modal with raw description so user can fill in manually
+    inp.value='';
+    openConfirmModal({description:text||rawText,amount:0,category:'Others',emoji:'🏷️',isRefund:false,date:parsedDate});
+    return;
   }
   // Check cache (use cleaned text as key)
   const cacheKey=text.toLowerCase().trim();
@@ -1558,6 +1569,9 @@ function renderHome(){
   const hEl=document.getElementById('health-score');
   hEl.textContent=h;hEl.className='health-score '+(h>=70?'c-green':h>=40?'c-yellow':'c-red');
   document.getElementById('api-banner').classList.toggle('hidden',!!S.geminiKey);
+  // Hide AI refresh button when no key — show only when key set
+  const insightRefreshBtn=document.getElementById('insight-refresh-btn');
+  if(insightRefreshBtn) insightRefreshBtn.style.display=S.geminiKey?'':'none';
 
   renderCatBars(txs,flexBudget);
   renderDistChips(txs,spent);
@@ -1694,9 +1708,12 @@ function renderTxList(txs){
 // SETTINGS RENDER
 // ═══════════════════════════════
 function renderSettings(){
-  document.getElementById('key-sub').textContent=S.geminiKey?'•••••••••'+S.geminiKey.slice(-4):'Not set';
+  document.getElementById('key-sub').textContent=S.geminiKey?'•••••••••'+S.geminiKey.slice(-4):'Not set — add to unlock AI features';
   document.getElementById('s-budget').value=S.budget||'';
   document.getElementById('insights-date-sub').textContent=S.insightsDate?`Last updated: ${S.insightsDate}`:'Never refreshed';
+  // Show/hide AI-dependent settings rows based on key presence
+  const aiRows=document.querySelectorAll('.ai-key-required');
+  aiRows.forEach(el=>el.style.display=S.geminiKey?'':'none');
   const sk=Object.keys(S.budgetSplit);
   document.getElementById('split-sub').textContent=sk.length?`${sk.length} categories · `+sk.slice(0,2).map(k=>`${k} ${S.budgetSplit[k]}%`).join(', ')+(sk.length>2?'…':''):'Not configured';
   renderFixedSettings();
@@ -1738,7 +1755,7 @@ async function saveKey(){
     await validateKey(k);
     S.geminiKey=k;save();
     st.className='key-status valid';st.textContent='✓ Saved & validated!';
-    setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome()},800)
+    setTimeout(()=>{cancelKeyEdit();renderSettings();renderHome();showCachedInsights()},800)
   }catch(e){
     st.className='key-status invalid';st.textContent='✗ '+(e.message||'Invalid key');
   }
