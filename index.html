@@ -1553,9 +1553,15 @@ function addCat(c){
 function renderHome(){
   document.getElementById('month-label').textContent=getMonthLabel(curYear,curMonth);
   const txs=getMonthTxs();
-  const fixedTotal=S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
-  const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
-  const flexBudget=Math.max(0,S.budget-fixedTotal-goalCommits);
+  const now=new Date();
+  const isCurrentMonthView=curYear===now.getFullYear()&&curMonth===now.getMonth();
+  // Use historical budget snapshot for past months if available
+  const viewMK=`${curYear}-${String(curMonth+1).padStart(2,'0')}`;
+  const _snap=!isCurrentMonthView?(S.budgetHistory||{})[viewMK]:null;
+  const fixedTotal=_snap?_snap.fixed:S.fixedExpenses.reduce((s,f)=>s+f.amount,0);
+  const goalCommits=_snap?_snap.goalCommits:(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
+  const budgetBase=_snap?_snap.budget:S.budget;
+  const flexBudget=Math.max(0,budgetBase-fixedTotal-goalCommits);
   const spentRaw=txs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-txs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0);
   const spent=Math.max(0,spentRaw);
   const pct=flexBudget>0?Math.min(spent/flexBudget*100,100):0;
@@ -1636,7 +1642,7 @@ function renderCatBars(txs,fb){
     if(alloc===0&&s>0) hasUnallocated=true;
     return`<div class="cat-bar-item">
       <div class="cat-bar-hdr">
-        <div class="cat-bar-name"><span style="flex-shrink:0">${catEmoji(cat)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cat}</span></div>
+        <div class="cat-bar-name"><span style="flex-shrink:0">${catEmoji(cat)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(cat)}</span></div>
         <div class="cat-bar-amts">₹${fmt(s)}${alloc>0?' / ₹'+fmt(alloc):''}</div>
       </div>
       <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${bp}%;background:${barColor}"></div></div>
@@ -1667,7 +1673,7 @@ function renderDistChips(txs,total){
   const savingsSpend=txs.filter(e=>e.isSavings).reduce((s,e)=>s+e.amount,0);
   if(savingsSpend>0) spend['Savings']=(spend['Savings']||0)+savingsSpend;
   c.innerHTML=Object.entries(spend).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1])
-    .map(([cat,amt])=>`<div class="dist-chip"><span>${cat==='Savings'?'💰':catEmoji(cat)}</span><span class="dist-chip-pct">${Math.round(amt/total*100)}%</span><span class="dist-chip-name">${cat}</span></div>`).join('');
+    .map(([cat,amt])=>`<div class="dist-chip"><span>${cat==='Savings'?'💰':catEmoji(cat)}</span><span class="dist-chip-pct">${Math.round(amt/total*100)}%</span><span class="dist-chip-name">${escHtml(cat)}</span></div>`).join('');
 }
 
 function renderFixedHome(){
@@ -1848,7 +1854,7 @@ function renderSplitPage(){
     const pct=S.budgetSplit[cat]||0;
     const alloc=fb*pct/100;
     return`<div class="split-item">
-      <div class="split-item-name">${catEmoji(cat)} ${cat}</div>
+      <div class="split-item-name">${catEmoji(cat)} ${escHtml(cat)}</div>
       <div class="split-item-alloc" id="sa-${sid(cat)}">₹${fmt(alloc)}</div>
       <input type="number" class="split-pct-inp" id="sp-${sid(cat)}" value="${pct}" min="0" max="100" oninput="updateSplitTotal()">
     </div>`;
@@ -1868,14 +1874,26 @@ function updateSplitTotal(){
   const el=document.getElementById('split-total-disp');
   el.textContent=Math.round(total)+'%';
   el.className='split-total-val '+(Math.abs(total-100)<1?'c-green':total>100?'c-red':'c-yellow');
-  document.getElementById('split-save-btn').disabled=Math.abs(total-100)>=1;
+  document.getElementById('split-save-btn').disabled=Math.abs(total-100)>1;
 }
 
 function saveSplit(){
   S.categories.filter(cat=>cat!=='Savings').forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i)S.budgetSplit[cat]=parseFloat(i.value)||0});
-  // Normalize to exactly 100%
+  // Normalize to exactly 100% using largest remainder method
   const tot=Object.values(S.budgetSplit).reduce((s,v)=>s+v,0);
-  if(tot>0&&Math.abs(tot-100)>0.5){const sc=100/tot;Object.keys(S.budgetSplit).forEach(k=>{S.budgetSplit[k]=Math.round(S.budgetSplit[k]*sc)});}
+  if(tot>0&&Math.abs(tot-100)>0.01){
+    const sc=100/tot;
+    const keys=Object.keys(S.budgetSplit);
+    // First pass: floor each value
+    let allocated=0;
+    const floors={};
+    keys.forEach(k=>{floors[k]=Math.floor(S.budgetSplit[k]*sc);allocated+=floors[k];});
+    // Second pass: distribute remainder to categories with largest fractional parts
+    let remainder=100-allocated;
+    const byFrac=keys.slice().sort((a,b)=>(S.budgetSplit[b]*sc%1)-(S.budgetSplit[a]*sc%1));
+    byFrac.forEach(k=>{if(remainder>0){floors[k]++;remainder--;}});
+    keys.forEach(k=>{S.budgetSplit[k]=floors[k];});
+  }
   save();renderHome();toast('Budget split saved!');
 }
 
@@ -1922,12 +1940,12 @@ function renderCatsPage(){
     const count=catCounts[cat]||0;
     return`<div class="cat-mgr-item">
       <div class="cat-mgr-info">
-        <div class="cat-mgr-name">${catEmoji(cat)} ${cat}</div>
+        <div class="cat-mgr-name">${catEmoji(cat)} ${escHtml(cat)}</div>
         <div class="cat-mgr-count">${count} transaction${count!==1?'s':''}</div>
       </div>
       <div class="cat-mgr-actions">
-        ${cat==='Savings'
-          ?'<span style="font-size:11px;color:var(--text3);padding:4px 8px">System category</span>'
+        ${(cat==='Savings'||cat==='Uncategorized')
+          ?`<span style="font-size:11px;color:var(--text3);padding:4px 8px">System category</span>`
           :`<button class="btn btn-ghost btn-xs" onclick="openRename('${esc(cat)}')">Rename</button>
         <button class="btn btn-ghost btn-xs" onclick="openMerge('${esc(cat)}')">Merge</button>
         <button class="btn btn-danger btn-xs" onclick="deleteCat('${esc(cat)}')">Delete</button>`}
@@ -2053,7 +2071,9 @@ function saveTx(){
   const todayStr=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
   if(newDate&&newDate>todayStr){toast('⚠️ Date is in the future — please select today or earlier');return;}
   tx.description=document.getElementById('tx-e-desc').value.trim()||tx.description;
-  tx.amount=Math.abs(parseFloat(document.getElementById('tx-e-amt').value)||tx.amount);
+  const _txAmt=parseFloat(document.getElementById('tx-e-amt').value);
+  if(!isNaN(_txAmt)&&_txAmt<=0){toast('Amount must be greater than zero');return;}
+  tx.amount=isNaN(_txAmt)?tx.amount:Math.abs(_txAmt);
   tx.category=document.getElementById('tx-e-cat').value;
   tx.date=newDate||tx.date;
   tx.isRefund=editTxRefund;tx.emoji=catEmoji(tx.category);
@@ -2522,7 +2542,8 @@ function confirmContribute(){
 
 function checkMonthEndSweep(){
   const now = new Date();
-  if(now.getDate() !== 1) return;
+  // No date check — sweepHistory already prevents double-running
+  // This allows sweep to run even if user missed the 1st of the month
   const prevKey = `sweep_${now.getFullYear()}_${now.getMonth()}`;
   if((S.sweepHistory||[]).includes(prevKey)) return;
   // Calculate last month's underspend
@@ -2531,6 +2552,8 @@ function checkMonthEndSweep(){
   const prevMK = `${prevYear}-${String(prevMonth+1).padStart(2,'0')}`;
   const monthName = new Date(prevYear,prevMonth,1).toLocaleString('default',{month:'long'});
   const prevTxs = S.expenses.filter(e=>e.date.startsWith(prevMK)&&!e.isSavings);
+  // Skip sweep if no expenses in previous month — new user or inactive month
+  if(prevTxs.length===0) return;
   const prevSpent = Math.max(0,prevTxs.filter(e=>!e.isRefund).reduce((s,e)=>s+e.amount,0)-prevTxs.filter(e=>e.isRefund).reduce((s,e)=>s+e.amount,0));
   // Use historical snapshot if available — prevents wrong sweep if budget changed after month ended
   const _snap=(S.budgetHistory||{})[prevMK];
@@ -2849,6 +2872,14 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
 });
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/Kharcha/sw.js').catch(()=>{});
+// Flush any pending debounced Firebase write when app is backgrounded or closed
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'&&_saveDebounce&&fbUid){
+    clearTimeout(_saveDebounce);
+    _saveDebounce=null;
+    fbSave(S);
+  }
+});
 </script>
 </body>
 </html>
