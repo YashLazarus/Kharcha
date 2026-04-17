@@ -139,6 +139,12 @@ input[type="number"]{font-family:var(--mono)}
 
 /* TRANSACTION LIST */
 .tx-list{padding:0 20px;margin-bottom:20px;display:flex;flex-direction:column;gap:7px}
+.search-wrap{margin:0 20px 12px;position:relative}
+.search-inp{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:14px;padding:10px 36px 10px 36px;width:100%;outline:none;transition:border-color 0.2s;-webkit-appearance:none;appearance:none;box-sizing:border-box}
+.search-inp:focus{border-color:var(--accent)}
+.search-inp-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;color:var(--text3)}
+.search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 4px;display:none;line-height:1}
+.search-results-label{font-size:11px;color:var(--text3);padding:0 20px;margin-bottom:8px;display:none}
 .tx-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;display:flex;align-items:center;gap:11px;cursor:pointer;transition:background 0.15s}
 .tx-item:active{background:var(--bg3)}
 .tx-emoji-box{width:34px;height:34px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
@@ -400,6 +406,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div class="sec-title">Transactions</div>
         <span id="tx-count-lbl" style="font-size:11px;color:var(--text3)"></span>
       </div>
+      <div class="search-wrap">
+        <span class="search-inp-icon">🔍</span>
+        <input type="text" class="search-inp" id="tx-search" placeholder="Search by name, category, amount…" oninput="onSearchInput()" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button class="search-clear" id="search-clear-btn" onclick="clearSearch()">✕</button>
+      </div>
+      <div class="search-results-label" id="search-results-label"></div>
       <div class="tx-list" id="tx-list"></div>
       <div style="height:6px"></div>
     </div>
@@ -1011,7 +1023,8 @@ function unesc(s){return decodeURIComponent(s||'')}
 let curYear=new Date().getFullYear(),curMonth=new Date().getMonth();
 
 function getMonthLabel(y,m){return new Date(y,m,1).toLocaleString('default',{month:'long',year:'numeric'})}
-function changeMonth(d){curMonth+=d;if(curMonth<0){curMonth=11;curYear--}if(curMonth>11){curMonth=0;curYear++}const now=new Date();if(curYear>now.getFullYear()||(curYear===now.getFullYear()&&curMonth>now.getMonth())){curYear=now.getFullYear();curMonth=now.getMonth()}renderHome()}
+function changeMonth(d){curMonth+=d;if(curMonth<0){curMonth=11;curYear--}if(curMonth>11){curMonth=0;curYear++}const now=new Date();if(curYear>now.getFullYear()||(curYear===now.getFullYear()&&curMonth>now.getMonth())){curYear=now.getFullYear();curMonth=now.getMonth()}// Clear search when navigating months
+if(searchQuery){const si=document.getElementById('tx-search');if(si){si.value='';searchQuery='';const cb=document.getElementById('search-clear-btn');if(cb)cb.style.display='none';}}renderHome()}
 function getMonthTxs(){return S.expenses.filter(e=>{const d=new Date(e.date+'T12:00:00');return d.getFullYear()===curYear&&d.getMonth()===curMonth})}
 
 // ═══════════════════════════════
@@ -1582,7 +1595,7 @@ function renderHome(){
   renderCatBars(txs,flexBudget);
   renderDistChips(txs,spent);
   renderFixedHome();
-  renderTxList(txs);
+  renderSearchResults(); // respects active search query
   renderMoMCompare(spent);
   renderDailyInsight();
 }
@@ -2034,6 +2047,55 @@ function togglePaceTooltip(){
       document.addEventListener('click',_paceTooltipClose);
     },10);
   }
+}
+
+// ═══════════════════════════════
+// SEARCH
+// ═══════════════════════════════
+let searchQuery = '';
+
+function onSearchInput(){
+  const inp = document.getElementById('tx-search');
+  searchQuery = inp.value.trim().toLowerCase();
+  const clearBtn = document.getElementById('search-clear-btn');
+  clearBtn.style.display = searchQuery ? 'block' : 'none';
+  renderSearchResults();
+}
+
+function clearSearch(){
+  document.getElementById('tx-search').value = '';
+  searchQuery = '';
+  document.getElementById('search-clear-btn').style.display = 'none';
+  renderSearchResults();
+  document.getElementById('tx-search').focus();
+}
+
+function renderSearchResults(){
+  const label = document.getElementById('search-results-label');
+  if(!searchQuery){
+    // No search active — render current month transactions normally
+    label.style.display = 'none';
+    const txs = getMonthTxs();
+    renderTxList(txs);
+    return;
+  }
+  // Search across ALL expenses (all months)
+  const q = searchQuery;
+  const results = S.expenses.filter(e => {
+    if(e.description && e.description.toLowerCase().includes(q)) return true;
+    if(e.category && e.category.toLowerCase().includes(q)) return true;
+    if(fmt(e.amount).includes(q)) return true;
+    if(String(e.amount).includes(q)) return true;
+    // Date search: "jan", "january", "april", "2026", "apr 11"
+    const dateStr = new Date(e.date+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}).toLowerCase();
+    const dateStrLong = new Date(e.date+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}).toLowerCase();
+    if(dateStr.includes(q)||dateStrLong.includes(q)) return true;
+    return false;
+  });
+  const count = results.length;
+  label.textContent = count > 0 ? `${count} result${count!==1?'s':''} across all months` : 'No results found';
+  label.style.display = 'block';
+  renderTxList(results);
 }
 
 // ═══════════════════════════════
@@ -2509,6 +2571,7 @@ function deleteGoal(){
     S.savingsHistory.unshift({id:Date.now().toString(36),date:todayStr,amount:g.saved,type:'return',note:`← ${g.name} deleted`});
   }
   S.goals = S.goals.filter(g=>g.id!==editingGoalId);
+  if(S.dailyInsight)S.dailyInsight.date='';
   save();closeModal('modal-add-goal');renderGoals();renderHome();
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
   toast(g.saved>0?`Goal deleted · ₹${fmt(g.saved)} returned to savings`:'Goal deleted');
@@ -2790,7 +2853,7 @@ function computeDailyInsight(){
       const pct=(g.saved/g.target)*100;
       for(const m of milestones){
         const key=`milestone_${g.id}_${m}`;
-        if(pct>=m-10&&pct<m+5&&pct<=100&&!seen[key]){
+        if(pct>=m-10&&pct<=100&&!seen[key]){
           const needed=Math.max(0,Math.round(g.target*m/100-g.saved));
           insight=needed<=0
             ?`🎯 ${g.name} hit ${m}%!`
