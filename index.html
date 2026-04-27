@@ -655,11 +655,20 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <span class="split-total-val" id="split-total-disp" style="font-family:var(--mono);font-size:18px;font-weight:500">0%</span>
     </div>
     <div id="split-items-list"></div>
-    <div class="flex gap8 mt14">
-      ${S.geminiKey?`<button class="btn btn-ai" onclick="aiSuggestSplit()" id="split-ai-btn">✦ Gemini Suggest</button>`:'<span style="font-size:12px;color:var(--text3)">Add Gemini API key to unlock AI split suggestions</span>'}
+    <div class="flex gap8 mt14" style="flex-wrap:wrap;align-items:center">
+      <button class="btn btn-ai" onclick="aiSuggestSplit()" id="split-ai-btn" style="display:none">✦ Gemini Suggest</button>
+      <span id="split-ai-hint" style="font-size:12px;color:var(--text3);display:none;flex:1;min-width:0">Add Gemini API key to unlock AI split suggestions</span>
       <button class="btn btn-primary" onclick="saveSplit()" id="split-save-btn" disabled>Save Split</button>
     </div>
   </div>
+</div>
+
+<div class="sub-page" id="sp-savings-history">
+  <div class="sub-page-hdr">
+    <button class="sub-page-back" onclick="closeSubPage('sp-savings-history')">‹</button>
+    <div class="sub-page-title">Savings History</div>
+  </div>
+  <div class="sub-page-content" id="savings-history-content"></div>
 </div>
 
 <div class="sub-page" id="sp-cats">
@@ -1139,10 +1148,12 @@ function switchTab(t){
 function openSubPage(id){
   if(id==='sp-split')renderSplitPage();
   if(id==='sp-cats')renderCatsPage();
+  if(id==='sp-savings-history')renderSavingsHistoryPage();
   document.getElementById(id).classList.add('active');
 }
 function closeSubPage(id){
   document.getElementById(id).classList.remove('active');
+  if(id==='sp-savings-history') return; // no renderSettings needed
   renderSettings();
 }
 
@@ -1922,6 +1933,11 @@ function renderSplitPage(){
       <input type="number" class="split-pct-inp" id="sp-${sid(cat)}" value="${pct}" min="0" max="100" oninput="updateSplitTotal()">
     </div>`;
   }).join('');
+  // Show/hide Gemini Suggest button or hint based on key presence
+  const aiBtn=document.getElementById('split-ai-btn');
+  const aiHint=document.getElementById('split-ai-hint');
+  if(aiBtn) aiBtn.style.display=S.geminiKey?'':'none';
+  if(aiHint) aiHint.style.display=S.geminiKey?'none':'block';
   updateSplitTotal();
 }
 
@@ -2485,7 +2501,10 @@ function renderGoals(){
         <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:2px">Savings</div>
         <div style="font-family:var(--mono);font-size:26px;font-weight:500;color:var(--green)">₹${fmt(S.savings||0)}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="openAddSavingsModal()" style="margin-top:0;flex-shrink:0">+ Add</button>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" onclick="openSavingsHistoryPage()" style="margin-top:0">History</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAddSavingsModal()" style="margin-top:0">+ Add</button>
+      </div>
     </div>
     ${totalSaved>0||totalCommitted>0?`<div style="padding-top:10px;border-top:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;margin-bottom:3px">
@@ -2688,6 +2707,95 @@ function checkMonthEndSweep(){
   if(document.getElementById('page-trends').classList.contains('active'))renderTrends();
   // Show informational toast
   setTimeout(()=>toast(`🎉 You spent ₹${fmt(saved)} less in ${monthName} — added to savings!`),600);
+}
+
+// ═══════════════════════════════
+// SAVINGS HISTORY PAGE
+// ═══════════════════════════════
+function openSavingsHistoryPage(){
+  openSubPage('sp-savings-history');
+}
+
+function renderSavingsHistoryPage(){
+  const el=document.getElementById('savings-history-content');
+  if(!el) return;
+  const history=(S.savingsHistory||[]);
+
+  if(!history.length){
+    el.innerHTML=`<div style="text-align:center;padding:48px 20px">
+      <div style="font-size:36px;margin-bottom:12px">💰</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px">No history yet</div>
+      <div style="font-size:13px;color:var(--text3)">Your savings activity will appear here.</div>
+    </div>`;
+    return;
+  }
+
+  // Type labels and colors
+  const typeLabel={manual:'Added',sweep:'Month sweep',transfer:'Goal transfer',return:'Goal return',boost:'Budget boost'};
+  const typeColor={manual:'var(--green)',sweep:'var(--green)',transfer:'var(--accent2)',return:'var(--green)',boost:'var(--accent2)'};
+  const typeIcon={manual:'💰',sweep:'🔄',transfer:'🎯',return:'↩️',boost:'📈'};
+
+  // Running balance from oldest to newest, then reverse
+  let running=0;
+  const withBalance=[...history].reverse().map(h=>{
+    // Determine if this entry reduces or adds to savings
+    const delta=(h.type==='transfer'||h.type==='boost')?-Math.abs(h.amount):Math.abs(h.amount);
+    running+=delta;
+    return{...h,balanceAfter:running};
+  });
+  withBalance.reverse(); // newest first for display
+
+  // Group by month
+  const groups={};
+  withBalance.forEach(h=>{
+    const mk=h.date.slice(0,7);
+    if(!groups[mk])groups[mk]=[];
+    groups[mk].push(h);
+  });
+
+  let html='';
+  // Current balance header
+  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:2px">Current Balance</div>
+      <div style="font-family:var(--mono);font-size:28px;font-weight:600;color:var(--green)">₹${fmt(S.savings||0)}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px;color:var(--text3)">${history.length} transaction${history.length!==1?'s':''}</div>
+    </div>
+  </div>`;
+
+  // Grouped history entries
+  Object.keys(groups).sort((a,b)=>b.localeCompare(a)).forEach(mk=>{
+    const monthName=new Date(mk+'-15T12:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    html+=`<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px">${monthName}</div>`;
+    html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">`;
+    groups[mk].forEach((h,i)=>{
+      const d=new Date(h.date+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      const isDebit=h.type==='transfer'||h.type==='boost';
+      const color=isDebit?'var(--red)':'var(--green)';
+      const sign=isDebit?'-':'+';
+      const label=typeLabel[h.type]||h.type;
+      const icon=typeIcon[h.type]||'💰';
+      const borderTop=i>0?'border-top:1px solid var(--border);':'';
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:13px 16px;${borderTop}">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+          <span style="font-size:18px;flex-shrink:0">${icon}</span>
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.note||(typeLabel[h.type]||'Savings'))}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:1px">${label} · ${d}</div>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:12px">
+          <div style="font-family:var(--mono);font-size:14px;font-weight:600;color:${color}">${sign}₹${fmt(Math.abs(h.amount))}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:1px">Bal ₹${fmt(Math.max(0,h.balanceAfter))}</div>
+        </div>
+      </div>`;
+    });
+    html+=`</div>`;
+  });
+
+  el.innerHTML=html;
 }
 
 // ═══════════════════════════════
