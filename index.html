@@ -1084,7 +1084,7 @@ async function callGemini(prompt,key){
   const k=key||S.geminiKey;
   if(!k)throw new Error('No key');
   trackApiCall();
-  const r=await fetch(`${GURL}?key=${k}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:800}})});
+  const r=await fetch(`${GURL}?key=${k}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:2000},thinkingConfig:{thinkingBudget:0}})});
   if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||`HTTP ${r.status}`)}
   const d=await r.json();
   return d.candidates?.[0]?.content?.parts?.[0]?.text||''
@@ -1125,7 +1125,9 @@ async function doSetup(){
 // ═══════════════════════════════
 // INIT
 // ═══════════════════════════════
-function initApp(){renderHome();renderSettings();showCachedInsights();renderDailyInsight();setTimeout(checkMonthEndSweep,1000)}
+function initApp(){
+  renderHome();renderSettings();showCachedInsights();renderDailyInsight();setTimeout(checkMonthEndSweep,1000);
+}
 function showCachedInsights(){
   // Only show cached insights - never auto-call Gemini on startup
   if(S.insights) document.getElementById('insight-text').textContent=S.insights;
@@ -1984,11 +1986,20 @@ async function aiSuggestSplit(){
   try{
     const goalCommits=(S.goals||[]).reduce((s,g)=>s+(g.monthly||0),0);
     const fb=Math.max(0,S.budget-S.fixedExpenses.reduce((s,f)=>s+f.amount,0)-goalCommits);
-    const prompt=`I have ₹${fb} flexible monthly budget for urban India. Categories: ${S.categories.join(', ')}. Return ONLY JSON: {"CategoryName":percentNumber,...} must sum to exactly 100.`;
+    const cats=S.categories.filter(cat=>cat!=='Savings');
+    const prompt=`Return ONLY a JSON object with no explanation, no markdown, no extra text. Distribute 100% budget across these spending categories for urban India: ${cats.join(', ')}. Use exact category names as keys. Values are integers summing to exactly 100. Example format: {"Food":40,"Transport":20}`;
     const raw=await callGemini(prompt);
     let sug;try{sug=extractJSON(raw)}catch(e){throw new Error('Invalid JSON from Gemini')}
     const _ta=Object.values(sug).reduce((s,v)=>s+Number(v),0);if(_ta>0&&_ta!==100){const _sa=100/_ta;Object.keys(sug).forEach(k=>{sug[k]=Math.round(sug[k]*_sa)})}
-    S.categories.filter(cat=>cat!=='Savings').forEach(cat=>{const i=document.getElementById(`sp-${sid(cat)}`);if(i&&sug[cat]!==undefined)i.value=sug[cat]});
+    // Apply with case-insensitive fallback in case Gemini slightly changes casing
+    cats.forEach(cat=>{
+      const i=document.getElementById(`sp-${sid(cat)}`);
+      if(!i) return;
+      // Try exact match first, then case-insensitive
+      if(sug[cat]!==undefined){i.value=Math.round(sug[cat]);return;}
+      const key=Object.keys(sug).find(k=>k.toLowerCase()===cat.toLowerCase());
+      if(key!==undefined) i.value=Math.round(sug[key]);
+    });
     updateSplitTotal();toast('Gemini suggested a split!');
   }catch(e){toast((e.message||'Could not get suggestion').slice(0,150));console.error('Split suggest error:',e)}
   finally{btn.disabled=false;btn.innerHTML='✦ Gemini Suggest'}
@@ -2973,10 +2984,10 @@ function computeDailyInsight(){
   if(!insight && flexBudget>0 && dayOfMonth>=3 && monthSpent>0 && !isOnCooldown('pace')){
     const expectedByNow=(dayOfMonth/daysInMonth)*flexBudget;
     const ratio=monthSpent/expectedByNow;
-    if(ratio>1.25){
+    if(ratio>1.15){
       insight=`⚠️ Spent ₹${fmt(monthSpent)} by day ${dayOfMonth} — ${Math.round((ratio-1)*100)}% more than expected pace`;
       setCooldown('pace',2);
-    } else if(ratio<0.6 && dayOfMonth>=7){
+    } else if(ratio<0.7 && dayOfMonth>=7){
       insight=`✅ Spent ₹${fmt(monthSpent)} by day ${dayOfMonth} — well under expected pace`;
       setCooldown('pace',2);
     }
@@ -2992,12 +3003,21 @@ function computeDailyInsight(){
     let topSpike=null;
     for(const [cat,amt] of Object.entries(curSpend)){
       const prev=prevSpend[cat]||0;
-      if(prev>0&&amt>prev*1.8&&amt>300){
-        if(!topSpike||amt-prev>topSpike.diff) topSpike={cat,amt,prev,diff:amt-prev,pct:Math.round((amt/prev-1)*100)};
+      // If prev data exists: flag 40%+ increase over ₹200
+      if(prev>0&&amt>=prev*1.4&&amt>200){
+        if(!topSpike||amt-prev>topSpike.diff) topSpike={cat,amt,prev,diff:amt-prev,pct:Math.round((amt/prev-1)*100),firstMonth:false};
+      }
+      // If no prev data (first month): flag high single-category spend (>40% of monthSpent)
+      // Only set if no prev-data spike already found — prev-data is always more accurate
+      if(prev===0&&amt>500&&monthSpent>0&&amt/monthSpent>0.4){
+        if(!topSpike) topSpike={cat,amt,prev:0,diff:amt,pct:100,firstMonth:true};
+        else if(topSpike.firstMonth&&amt>topSpike.amt) topSpike={cat,amt,prev:0,diff:amt,pct:100,firstMonth:true};
       }
     }
     if(topSpike){
-      insight=`📈 ${topSpike.cat} is ₹${fmt(topSpike.diff)} higher than last month at this point (+${topSpike.pct}%)`;
+      insight=topSpike.firstMonth
+        ?`📊 ${topSpike.cat} is taking up ${Math.round(topSpike.amt/monthSpent*100)}% of your spend this month (₹${fmt(topSpike.amt)})`
+        :`📈 ${topSpike.cat} is ₹${fmt(topSpike.diff)} higher than last month at this point (+${topSpike.pct}%)`;
       setCooldown('spike',3);
     }
   }
@@ -3011,7 +3031,7 @@ function computeDailyInsight(){
       const pct=(g.saved/g.target)*100;
       for(const m of milestones){
         const key=`milestone_${g.id}_${m}`;
-        if(pct>=m-10&&pct<=100&&!seen[key]){
+        if(pct>=m-15&&pct<=100&&!seen[key]){
           const needed=Math.max(0,Math.round(g.target*m/100-g.saved));
           insight=needed<=0
             ?`🎯 ${g.name} hit ${m}%!`
@@ -3029,7 +3049,7 @@ function computeDailyInsight(){
   if(!insight && dayOfMonth>=daysInMonth-6 && flexBudget>0 && monthSpent>0 && !isOnCooldown('projection')){
     const projected=Math.round((monthSpent/dayOfMonth)*daysInMonth);
     const diff=flexBudget-projected;
-    if(Math.abs(diff)>200){
+    if(Math.abs(diff)>100){
       insight=diff>0
         ?`📊 At this pace you'll finish ₹${fmt(diff)} under budget this month ✓`
         :`📊 At this pace you'll exceed budget by ₹${fmt(Math.abs(diff))} — ease up`;
