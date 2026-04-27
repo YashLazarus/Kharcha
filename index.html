@@ -551,31 +551,41 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
               </div>
             </div>
             <div class="s-row">
+              <div class="s-row-icon" style="background:rgba(0,229,160,0.1)">📊</div>
+              <div class="s-row-content">
+                <div class="s-row-label">Export as CSV</div>
+                <div class="s-row-sub">Open in Excel or Google Sheets</div>
+              </div>
+              <div class="s-row-right">
+                <button class="btn btn-sm" onclick="exportCSV()">Export CSV</button>
+              </div>
+            </div>
+            <div class="s-row">
               <div class="s-row-icon" style="background:rgba(0,229,160,0.1)">📤</div>
               <div class="s-row-content">
                 <div class="s-row-label">Export Backup</div>
-                <div class="s-row-sub">Download all your data as a JSON file</div>
+                <div class="s-row-sub">Full backup as JSON — use to restore later</div>
               </div>
               <div class="s-row-right">
-                <button class="btn btn-sm" onclick="exportData()">Export</button>
+                <button class="btn btn-sm" onclick="exportData()">Export JSON</button>
               </div>
             </div>
             <div class="s-row">
               <div class="s-row-icon" style="background:rgba(124,77,255,0.1)">📥</div>
               <div class="s-row-content">
                 <div class="s-row-label">Import Backup</div>
-                <div class="s-row-sub">Restore from a previously exported file</div>
+                <div class="s-row-sub">Restore from a JSON backup file</div>
               </div>
               <div class="s-row-right">
-                <button class="btn btn-sm" onclick="document.getElementById('import-file').click()">Import</button>
+                <button class="btn btn-sm" onclick="document.getElementById('import-file').click()">Import JSON</button>
                 <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)"/>
               </div>
             </div>
-            <div class="s-row">
+            <div class="s-row" style="border-top:2px solid rgba(255,79,106,0.15);margin-top:4px;padding-top:4px">
               <div class="s-row-icon" style="background:rgba(255,79,106,0.1)">🗑️</div>
               <div class="s-row-content">
-                <div class="s-row-label">Clear All Data</div>
-                <div class="s-row-sub">Wipes all expenses, categories, budget</div>
+                <div class="s-row-label" style="color:var(--red)">Clear All Data</div>
+                <div class="s-row-sub">Permanently deletes everything — cannot be undone</div>
               </div>
               <div class="s-row-right">
                 <button class="btn btn-danger btn-sm" onclick="clearAll()">Clear</button>
@@ -1792,6 +1802,37 @@ function addFixed(){
 }
 function deleteFixed(id){S.fixedExpenses=S.fixedExpenses.filter(f=>f.id!==id);if(S.dailyInsight)S.dailyInsight.date='';save();renderSettings();renderHome();}
 
+function exportCSV(){
+  if(!S.expenses||!S.expenses.length){toast('No expenses to export');return;}
+  // CSV columns: Date, Description, Amount, Category, Type, Month
+  const rows=[['Date','Description','Amount','Category','Type','Month']];
+  const sorted=[...S.expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  sorted.forEach(e=>{
+    const type=e.isSavings?'Savings':e.isRefund?'Refund':'Expense';
+    const month=new Date(e.date+'T12:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    // Escape fields that may contain commas or quotes
+    const esc=v=>{let s=String(v||'');if(/^[=+\-@|]/.test(s))s='\t'+s;return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:`${s}`};
+    rows.push([
+      esc(e.date),
+      esc(e.description||''),
+      esc(e.amount),
+      esc(e.category||'Uncategorized'),
+      esc(type),
+      esc(month)
+    ]);
+  });
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}); // BOM for Excel
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const d=new Date();
+  a.href=url;
+  a.download=`kharcha-expenses-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${sorted.length} expenses as CSV ✓`);
+}
+
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -1842,11 +1883,20 @@ function importData(input){
 }
 
 function clearAll(){
-  if(!confirm('Clear ALL data? Cannot be undone.'))return;
-  clearTimeout(_saveDebounce); // Cancel any pending Firebase write
+  // First confirmation — are you sure?
+  if(!confirm('⚠️ This will permanently delete all your expenses, goals, savings and settings.\n\nAre you absolutely sure?'))return;
+  // Second confirmation — type DELETE
+  const typed=prompt('Type DELETE (in capitals) to confirm. This cannot be undone.');
+  if(typed!=='DELETE'){toast('Cancelled — data is safe');return;}
+  // Cancel any pending Firebase write and null the debounce so
+  // visibilitychange listener won't try to flush during cleanup
+  clearTimeout(_saveDebounce);
+  _saveDebounce=null;
   if(fbListener&&fbUid){fbPath().off('value',fbListener);fbListener=null;}
   if(fbUid){fbPath().remove().catch(()=>{});}
-  S=defData();localStorage.removeItem(SK);
+  S=defData();
+  // Clear all kharcha_* localStorage keys (not just main state)
+  Object.keys(localStorage).forEach(k=>{if(k===SK||k.startsWith('kharcha_'))localStorage.removeItem(k);});
   fbAuth.signOut().then(()=>{
     fbUid=null;
     document.getElementById('app').style.display='none';
