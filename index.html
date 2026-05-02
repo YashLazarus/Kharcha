@@ -1084,10 +1084,12 @@ async function callGemini(prompt,key){
   const k=key||S.geminiKey;
   if(!k)throw new Error('No key');
   trackApiCall();
-  const r=await fetch(`${GURL}?key=${k}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:2000},thinkingConfig:{thinkingBudget:0}})});
+  const r=await fetch(`${GURL}?key=${k}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:2000}})});
   if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||`HTTP ${r.status}`)}
   const d=await r.json();
-  return d.candidates?.[0]?.content?.parts?.[0]?.text||''
+  // Skip thinking blocks (thought:true) — find first actual response part
+  const parts=d.candidates?.[0]?.content?.parts||[];
+  return parts.find(p=>!p.thought)?.text||parts[0]?.text||''
 }
 async function validateKey(k){await callGemini('Say OK',k);return true}
 
@@ -2705,10 +2707,12 @@ function checkMonthEndSweep(){
   const prevBudget = _snap ? _snap.budget : S.budget;
   const prevFlex = Math.max(0,prevBudget-prevFixed-prevCommits);
   const saved = Math.round(prevFlex - prevSpent);
-  if(saved <= 0) return;
-  // Mark as done
+  // Always mark month as evaluated — even if overspent
+  // This prevents re-evaluation on future app opens after data changes (e.g. backdated refunds)
   if(!S.sweepHistory) S.sweepHistory=[];
   S.sweepHistory.push(prevKey);
+  save(); // persist sweepHistory immediately so it survives if page closes before sweep completes
+  if(saved <= 0) return;
   // Auto-add to savings silently
   S.savings = (S.savings||0)+saved;
   if(!S.savingsHistory) S.savingsHistory=[];
